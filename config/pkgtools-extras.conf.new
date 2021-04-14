@@ -1,0 +1,17 @@
+BASE_MIRROR=https://mirrors.slackware.com/slackware/slackware64-current/
+WORKDIR=/var/lib/pkgtools-extras/
+CACHEDIR=/var/cache/packages
+WGETFLAGS="--passive-ftp"
+
+MIRRORS['slackware64']=${BASE_MIRROR}slackware64/
+MIRRORS['testing']=${BASE_MIRROR}testing/
+MIRRORS['pasture']=${BASE_MIRROR}pasture/
+MIRRORS['patches']=${BASE_MIRROR}patches/
+MIRRORS['extra']=${BASE_MIRROR}extra/
+
+MIRRORS['alienbob']=http://bear.alienbase.nl/mirrors/people/alien/sbrepos/current/x86_64/
+MIRRORS['restricted']=http://bear.alienbase.nl/mirrors/people/alien/restricted_sbrepos/current/x86_64/
+
+MIRRORS['slackpkgplus']=http://slakfinder.org/slackpkg+15/
+
+#MIRRORS['multilib']=http://bear.alienbase.nl/mirrors/people/alien/multilib/14.2/

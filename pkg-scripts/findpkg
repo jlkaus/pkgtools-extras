@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# options:
+#   --info: Show the slack-desc for each package (from PACKAGES.TXT or the installed package file)
+#   --all: no PATTERN, just show all packages in the remotes and the installed ones (unless filtered)
+#   --status=STATUSLIST: Filter the results by install-status (or a list of install-statuses):
+#           installed (or inst or i)
+#           available (or avail or a)
+#           Default STATUSLIST is installed,available
+#   --repo=REPOLIST: Filter the results based on which repo the package is from. By default, all repos
+#           are accepted.  The special repo "unknown" is used when a package is only installed locally,
+#           but is not available upstream (currently).  The special repo "available" can be used to select
+#           packages available at some upstream repo (thus excluding packages installed locally but not
+#           currently available upstream).  Default REPOLIST is unknown,available
+#
+# arguments:
+#   PATTERN: swizzled before using as grep to the pkglist and the installed packages names
+
+# By default, just displays, for each result:
+# install-status source-repo packagename
+# If --info specified, also dumps out the slackdesc info for that package, after the above.
+
+# Source the config file
+# Verify the pkglist exists
+# Swizzle the pattern
+# Search the pkglist and installed packages
+# Display results
+
+# Helper function to find the slackdesc info

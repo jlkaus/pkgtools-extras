@@ -1,0 +1,87 @@
+#!/bin/bash
+
+PKG_LIST_LOC=/var/lib/pkgtools/packages
+BOOT_LOC=/boot
+EFI_LOC=$BOOT_LOC/efi/EFI/Slackware
+
+
+function find_versions {
+    PKG_LIST=$(find $PKG_LIST_LOC -name "$1-*" -type f -printf '%f\n' |sed -e "s/^$1-//; s/-.*\$//")
+    echo ${PKG_LIST}
+}
+
+RUNNING_VER=$(uname -r)
+
+GENERIC_VERS=$(find_versions kernel-generic)
+HUGE_VERS=$(find_versions kernel-huge)
+MODULES_VERS=$(find_versions kernel-modules)
+SOURCE_VERS=$(find_versions kernel-source)
+HEADER_VERS=$(find_versions kernel-headers)
+
+declare -A CFG_VERS
+for x in $EFI_LOC/vmlinuz{,-huge,-old,-old-huge}; do
+	xtype=${x##*/}
+	x_md5=$(md5sum $x 2>/dev/null |awk '{print $1}')
+	xinitrd=${x//vmlinuz/initrd}.gz
+	xinitrd_md5=
+	if [ -r $xinitrd ]; then
+		xinitrd_md5=$(md5sum $xinitrd 2>/dev/null |awk '{print $1}')
+	else
+	        xinitrd=
+	fi
+	
+#	echo "  ${x##*/} $x_md5 ${xinitrd##*/} $xinitrd_md5"
+
+	found_ver=
+	for y in $BOOT_LOC/vmlinuz-*-*; do
+		y_md5=$(md5sum $y 2>/dev/null |awk '{print $1}')
+		yinitrd=${y//vmlinuz-generic-/initrd-}.gz
+		yinitrd_md5=
+		if [ -r $yinitrd ]; then
+			yinitrd_md5=$(md5sum $yinitrd 2>/dev/null |awk '{print $1}')
+		else
+			yinitrd=
+		fi
+
+#		echo "    ${y##*/} $y_md5 ${yinitrd##*/} $yinitrd_md5"
+
+		if [ "$x_md5" = "$y_md5" -a "$xinitrd_md5" = "$yinitrd_md5" ]; then
+			found_ver=${y##*vmlinuz-*-}
+		fi
+	done
+
+#	if [ -n "$found_ver" ]; then
+#		echo "FOUND VERSION: $found_ver"
+#	else
+#		echo "NO VERSION FOUND!"
+#	fi
+	CFG_VERS[$xtype]=$found_ver
+
+done
+
+
+
+echo Running: $RUNNING_VER
+echo Installed-generic: $GENERIC_VERS
+echo Installed-huge: $HUGE_VERS
+echo Installed-modules: $MODULES_VERS
+echo Installed-source: $SOURCE_VERS
+echo Installed-headers: $HEADER_VERS
+for x in vmlinuz{,-huge,-old,-old-huge}; do
+    echo Configured-${x}: ${CFG_VERS[$x]}
+done
+
+ALL_VERS=$(
+    {
+    echo -e "${GENERIC_VERS// /\\n}"
+    echo -e "${RUNNING_VER}"
+    echo -e "${HUGE_VERS// /\\n}"
+    echo -e "${MODULES_VERS// /\\n}"
+    echo -e "${SOURCE_VERS// /\\n}"
+    echo -e "${HEADER_VERS// /\\n}"
+    } | sort |uniq )
+
+ALL_VERS=$(echo ${ALL_VERS})
+echo Unique: $ALL_VERS
+
+exit

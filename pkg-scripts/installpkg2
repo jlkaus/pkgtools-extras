@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Options:
+#   --no-verify  Passes --no-verify to the fetchpkg program, if used.
+#   --no-clean   Does not call clearpkgcache after the install.
+#   --no-download  Does not call fetchpkg first.  Tries to install from the cache anyway.
+# Arguments:
+#   PKGNAMES.  Full packagenames to download and optionally install.
+
+# If --no-download not specified:
+#  call fetchpkg PKGNAMES, optionally with the --no-verify passed through.
+
+# source the config file
+# verify the cache exists.
+# for each package in PKGNAMES:
+#   If the package exists in the cache, call installpkg on it.
+#   Unless --no-clean specified, delete the package from the cache if the install was successful.
+

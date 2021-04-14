@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# options:
+#  --gpgkeys: Only updates the GPG keys in the keyring
+# By default, doesn't update GPG keys, but does download and upload:
+#   CHECKSUMS.md5 (concatenated from all repos, each first validated by associated .asc file)
+#   PACKAGES.TXT (concatenated from all repos)
+#   pkglist (built by running over the combined PACKAGES.TXT)
+#   MANIFEST.bz (concatenated from all repos)  (Not yet used. Maybe don't bother right now)
+
+# source the config file
+# ensure the working directory exists
+
+# if gpgkeys specified, just download each gpgkeys from the repos (Special case for base?)
+# install the keys, and delete the files
+
+
+
+# As we download each file, place it in a temp spot.  Once its downloaded ok and validated, add to the real spot.
+# Only delete old ones once we have at least got something new (CHECKSUMS.md5 and PACKAGES.TXT both download ok and validate from at least one repo)
+# build pkglist at the end
+

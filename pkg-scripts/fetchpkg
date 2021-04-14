@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Options:
+#   --force: Download it again, replacing what might already be in the cache.
+#   --no-verify: Don't verify the downloaded file
+# Arguments:
+#   PKGNAMES: a list of packagenames to download.  Must include full name, with version, arch, build number, etc.
+
+# Source the config files.
+# Verify the pkglist exists
+# Verify the cache exists
+# For each package:
+#   Find the repo and directory information from the pkglist for the pkg, or complain if that package isn't found.
+#   Check if the package file is already in the cache.  Skip if it is, unless --force specified.
+#   wget $WGETOPTS -O $repo$path$pkgname.$ext $cache$path$pkgname.$ext
+#   Skip verification if --no-verify specified.  Otherwise:
+#   wget $WGETOPTS -O $repo$path$pkgname.$ext.asc $cache$path$pkgname.$ext.asc
+#   gpg --verify $cache$path$pkgname.$ext.asc $cache$path$pkgname.$ext
