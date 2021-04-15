@@ -1,18 +1,128 @@
 #!/bin/bash
 
+TOOLDIR=${TOOLDIR:-/usr/sbin}
+
+# config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
+PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
+if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
+    echo "*** ERROR: ${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting." >&2
+    exit 64
+fi
+
+declare -A MIRRORS
+. ${PKGTOOLS_EXTRAS_CONF}
+
+# Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
+# If CACHEDIR or WORKDIR are not set, terminate.
+if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
+    echo "*** ERROR: CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting." >&2
+    exit 64
+fi
+
+if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
+    echo "*** ERROR: No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist." >&2
+    exit 1
+fi
+
+
 # Options:
 #   --no-verify  Passes --no-verify to the fetchpkg program, if used.
+#   --force-download Passes --force to the fetchpkg program, if used.
 #   --no-clean   Does not call clearpkgcache after the install.
-#   --no-download  Does not call fetchpkg first.  Tries to install from the cache anyway.
+#   --no-download,--no-fetch  Does not call fetchpkg first.  Tries to install from the cache anyway.
+#   --no-install Doesn't actually install.  Mostly used with --no-download to clear the item out of the cache?
+#   --force-reinstall  If the exact same package is already installed, by default it won't be re-installed, but this will
+#                      force that to happen.
+#   --no-upgrade    By default, upgradepkg is used, to replace an old version if it already exists.  With this, installpkg will be used instead, allowing installation of several versions of the same package (like kernel versions)
 # Arguments:
 #   PKGNAMES.  Full packagenames to download and optionally install.
 
-# If --no-download not specified:
-#  call fetchpkg PKGNAMES, optionally with the --no-verify passed through.
 
-# source the config file
-# verify the cache exists.
-# for each package in PKGNAMES:
-#   If the package exists in the cache, call installpkg on it.
-#   Unless --no-clean specified, delete the package from the cache if the install was successful.
+DO_FETCH=1
+DO_INSTALL=1
+DO_CLEAN=1
+INSTALLER=upgradepkg
+INSTALLER_OPTIONS=--install-new
+FETCH_OPTIONS=
+PKGNAMES=
+
+while [ -n "$1" ]; do
+    case $1 in
+	--no-verify)
+	    FETCH_OPTIONS="${FETCH_OPTIONS} --no-verify"
+	    shift
+	    ;;
+	--force-download)
+	    FETCH_OPTIONS="${FETCH_OPTIONS} --force-download"
+	    shift
+	    ;;
+	--no-download|--no-fetch)
+	    DO_FETCH=
+	    shift
+	    ;;
+	--no-install)
+	    DO_INSTALL=
+	    shift
+	    ;;
+	--no-clean)
+	    DO_CLEAN=
+	    shift
+	    ;;
+	--force-reinstall)
+	    INSTALLER_OPTIONS="${INSTALLER_OPTIONS} --reinstall"
+	    shift
+	    ;;
+	--no-upgrade)
+	    INSTALLER=installpkg
+	    INSTALLER_OPTIONS=
+	    shift
+	    ;;
+	*)
+	    PKGNAMES="$PKGNAMES $1"
+	    shift
+	    ;;
+    esac
+done
+
+#echo "DO_FETCH=$DO_FETCH"
+#echo "DO_INSTALL=$DO_INSTALL"
+#echo "DO_CLEAN=$DO_CLEAN"
+#echo "FETCH_OPTIONS=$FETCH_OPTIONS"
+#echo "INSTALLER=$INSTALLER"
+#echo "INSTALLER_OPTIONS=$INSTALLER_OPTIONS"
+#echo "PKGNAMES=$PKGNAMES"
+
+if [ -n "$DO_FETCH" ]; then
+    ${TOOLDIR}/fetchpkg $FETCH_OPTIONS $PKGNAMES
+fi
+
+if [ ! -e "$CACHEDIR" -o ! -d "$CACHEDIR" ]; then
+    echo "*** ERROR: $CACHEDIR doesn't exist or isn't a directory." >&2
+    exit 1
+fi
+
+for x in $PKGNAMES; do
+    # load in the pkginfo file, find the package filename, location, and extension
+    PKG_LOCATION=$(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { printf \"%s/%s.%s\n\",\$7,\$6,\$8 }" )
+    if [ -z "$PKG_LOCATION" ]; then
+	echo "*** WARN: Package $x not found in the pkglist.  Skipping." >&2
+    else
+#	echo $PKG_LOCATION
+	
+	if [ -e ${CACHEDIR}/$PKG_LOCATION ]; then
+	    if [ -n "$DO_INSTALL" ]; then
+		${INSTALLER} ${INSTALLER_OPTIONS} ${CACHEDIR}/$PKG_LOCATION
+	    fi
+	    if [ "$?" -eq 0 ]; then
+		if [ -n "$DO_CLEAN" ]; then
+		    rm ${CACHEDIR}/$PKG_LOCATION
+		fi
+	    else
+		echo "*** WARN: $x installation failed: $?.  Not removing from cache." >&2
+	    fi
+	else
+	    echo "*** WARN: $x not found in the cache.  Expected at [${CACHEDIR}/$PKG_LOCATION].  Skipping." >&2
+	fi
+    fi
+done
 

@@ -1,0 +1,16 @@
+pkg-scripts:
+2. Make fetchpkg work on the slackpkg files
+5. Make updatepkglists create and replace the slackpkg files
+
+kernel-scripts:
+1. Update check-kernels
+2. Make set-boot-kernel work
+3. Make install-new-kernels work with the other tools
+4. Make remove-unused-kernels work with the other tools
+
+slackbuild:
+1. Create a rough slackbuild to generate a valid slackware package of the scripts, config, and man pages
+
+man-pages:
+1. Rough in man pages for the pkg-script tools
+2. Rough in man pages for the kernel-script tools

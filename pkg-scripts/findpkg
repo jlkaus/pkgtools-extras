@@ -1,29 +1,166 @@
 #!/bin/bash
 
+# config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
+PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
+if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
+    echo "*** ERROR: ${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting." >&2
+    exit 64
+fi
+
+declare -A MIRRORS
+. ${PKGTOOLS_EXTRAS_CONF}
+
+# Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
+# If CACHEDIR or WORKDIR are not set, terminate.
+if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
+    echo "*** ERROR: CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting." >&2
+    exit 64
+fi
+
+if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
+    echo "*** ERROR: No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist." >&2
+    exit 1
+fi
+
+
+
 # options:
 #   --info: Show the slack-desc for each package (from PACKAGES.TXT or the installed package file)
-#   --all: no PATTERN, just show all packages in the remotes and the installed ones (unless filtered)
-#   --status=STATUSLIST: Filter the results by install-status (or a list of install-statuses):
+#   --status=STATUSLIST: Filter the results by install-status (or a comma-separated list of install-statuses):
 #           installed (or inst or i)
 #           available (or avail or a)
 #           Default STATUSLIST is installed,available
 #   --repo=REPOLIST: Filter the results based on which repo the package is from. By default, all repos
-#           are accepted.  The special repo "unknown" is used when a package is only installed locally,
-#           but is not available upstream (currently).  The special repo "available" can be used to select
+#           are accepted.  The special repo "__unknown__" is used when a package is only installed locally,
+#           but is not available upstream (currently).  The special repo "__available__" can be used to select
 #           packages available at some upstream repo (thus excluding packages installed locally but not
-#           currently available upstream).  Default REPOLIST is unknown,available
+#           currently available upstream).  Default REPOLIST is __unknown__,__available__
 #
 # arguments:
 #   PATTERN: swizzled before using as grep to the pkglist and the installed packages names
+
+SHOW_INFO=
+STATUS_LIST="installed available"
+REPO_LIST="__unknown__ __available__"
+PATTERN=
+while [ -n "$1" ]; do
+    case $1 in
+	--info)
+	    SHOW_INFO=1
+	    shift
+	    ;;
+	--status)
+	    STATUS_LIST=${2//,/ }
+	    shift
+	    shift
+	    ;;
+	--repo)
+	    REPO_LIST=${2//,/ }
+	    shift
+	    shift
+	    ;;
+	*)
+	    if [ -n "$PATTERN" ]; then
+		PATTERN="$PATTERN $1"
+	    else
+		PATTERN=$1
+	    fi
+	    shift
+	    ;;
+    esac
+done
+
+REPO_LIST=${REPO_LIST//__available__/${!MIRRORS[@]}}
+REPO_LIST=${REPO_LIST// /|}
+
+TRUE_PATTERN=$(echo $PATTERN |sed -e 's/\+/\\\+/g' -e 's/\./\\\./g' -e 's/ /\|/g')
+
+INCLUDE_INSTALLED=
+INCLUDE_AVAILABLE=
+for x in $STATUS_LIST; do
+    case $x in
+	i|I|inst|installed|Installed)
+	    INCLUDE_INSTALLED=1
+	    ;;
+	a|A|avail|available|Available)
+	    INCLUDE_AVAILABLE=1
+	    ;;
+	*)
+	    echo "*** WARN: Ignoring unknown STATUS selector: $x" >&2
+	    ;;
+    esac
+done
+
+#echo "WORKDIR=$WORKDIR"
+#echo "CACHEDIR=$CACHEDIR"
+#echo "MIRRORS="
+#for x in "${!MIRRORS[@]}"; do
+#    echo "    $x ${MIRRORS[$x]}"
+#done
+#echo "SHOW_INFO=$SHOW_INFO"
+#echo "INCLUDE_INSTALLED=$INCLUDE_INSTALLED"
+#echo "INCLUDE_AVAILABLE=$INCLUDE_AVAILABLE"
+#echo "REPO_LIST=$REPO_LIST"
+#echo "PATTERN=$PATTERN"
+#echo "TRUE_PATTERN=$TRUE_PATTERN"
+#echo
+
+# Note: If PATTERN is an empty string, all packages will be returned, but if STATUS_LIST or REPO_LIST are empty,
+# none of the PATTERN-matching packages will match the filter criteria, returning an empty list.
 
 # By default, just displays, for each result:
 # install-status source-repo packagename
 # If --info specified, also dumps out the slackdesc info for that package, after the above.
 
-# Source the config file
-# Verify the pkglist exists
-# Swizzle the pattern
-# Search the pkglist and installed packages
-# Display results
+MATCHING_PKGS=$(
+    ( cat ${WORKDIR}/pkglist;
+      find /var/lib/pkgtools/packages/ -printf '%P\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,"ver","arch","build",$2,"path","ext"}'
+    ) | awk "\$2~/$PATTERN/ { print \$6 }" |sort |uniq
+	     )
 
-# Helper function to find the slackdesc info
+for x in ${MATCHING_PKGS}; do
+    AREPO=$(cat ${WORKDIR}/pkglist | awk "\$6~/$x/ {print \$1; exit}")
+    ISTATE=avail
+    if [ -e "/var/lib/pkgtools/packages/${x}" ]; then
+	ISTATE=inst
+    fi
+    if [ -z "$AREPO" ]; then
+	AREPO=__unknown__
+    fi
+
+    if [ -n "$INCLUDE_INSTALLED" -a "$ISTATE" = "inst" ] || [ -n "$INCLUDE_AVAILABLE" -a "$ISTATE" = "avail" ]; then
+	if echo "$AREPO" |grep -E -s -q -e "^${REPO_LIST}\$"; then
+	    if [ -n "$SHOW_INFO" ]; then
+		echo "PACKAGE_NAME: $x"
+		echo "REPOSITORY: $AREPO"
+		if [ "$ISTATE" = "inst" ]; then
+		    # For installed packages, the slack-desc should be in the package file
+		    # in /var/lib/pkgtools/packages/PKGNAME:
+		    # ...
+		    # PACKAGE DESCRIPTION:
+		    # {print}
+		    # FILE LIST:
+		    # {exit}
+		    echo "STATUS: Installed"
+		    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' /var/lib/pkgtools/packages/${x}
+		    echo
+		    
+		else
+		    # For packages that are not installed, we'll have to look in PACKAGES.TXT
+		    # {ignore}
+		    # PACKAGE NAME: PKGNAME.ext
+		    # {ignore}
+		    # PACKAGE DESCRIPTION:
+		    # {print}
+		    # <BLANK>
+		    # {exit}
+		    echo "STATUS: Available"
+		    awk "doprint && /^\$/ {exit} doprint {print} isfound && /^PACKAGE DESCRIPTION:\$/ {doprint=1} /^PACKAGE NAME: +${x}\.t..\$/ {isfound=1}" ${WORKDIR}/PACKAGES.TXT
+		    echo
+		fi
+	    else
+		printf "%-6s %-26s %s\n" $ISTATE $AREPO $x
+	    fi
+	fi
+    fi
+done
