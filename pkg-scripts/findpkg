@@ -1,10 +1,32 @@
 #!/bin/bash
 
+
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
+}
+
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
+}
+
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
+}
+
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
+}
+
 # config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
 PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
 if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    echo "*** ERROR: ${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting." >&2
-    exit 64
+    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
 fi
 
 declare -A MIRRORS
@@ -13,13 +35,11 @@ declare -A MIRRORS
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
 # If CACHEDIR or WORKDIR are not set, terminate.
 if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
-    echo "*** ERROR: CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting." >&2
-    exit 64
+    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
-    echo "*** ERROR: No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist." >&2
-    exit 1
+    abort_clean 1 "No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist."
 fi
 
 
@@ -86,7 +106,7 @@ for x in $STATUS_LIST; do
 	    INCLUDE_AVAILABLE=1
 	    ;;
 	*)
-	    echo "*** WARN: Ignoring unknown STATUS selector: $x" >&2
+	    warn_msg "Ignoring unknown STATUS selector: $x"
 	    ;;
     esac
 done
@@ -164,3 +184,5 @@ for x in ${MATCHING_PKGS}; do
 	fi
     fi
 done
+
+cleanup

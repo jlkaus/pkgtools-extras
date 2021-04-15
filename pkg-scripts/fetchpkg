@@ -1,11 +1,32 @@
 #!/bin/bash
 
 
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
+}
+
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
+}
+
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
+}
+
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
+}
+
 # config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
 PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
 if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    echo "*** ERROR: ${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting." >&2
-    exit 64
+    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
 fi
 
 declare -A MIRRORS
@@ -14,15 +35,19 @@ declare -A MIRRORS
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
 # If CACHEDIR or WORKDIR are not set, terminate.
 if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
-    echo "*** ERROR: CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting." >&2
-    exit 64
+    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" -o ! -e "${WORKDIR}/CHECKSUMS.md5" ]; then
-    echo "*** ERROR: No pkglist (or PACKAGES.TXT, or CHECKSUMS.md5) found in ${WORKDIR}.  Please update the pkglist." >&2
-    exit 1
+    abort_clean 1 "No pkglist (or PACKAGES.TXT, or CHECKSUMS.md5) found in ${WORKDIR}.  Please update the pkglist."
 fi
 
+TMPDIR=$( mktemp -d --tmpdir fetchpkg.XXXXXX )
+if [ $? -ne 0 ]; then
+    abort_clean 1 "Unable to create a temporary directory ($?)."
+fi
+
+trap 'cleanup' 2 14 15
 
 # Options:
 #   --force: Download it again, replacing what might already be in the cache.
@@ -61,27 +86,15 @@ done
 #echo "FORCE_DOWNLOAD=$FORCE_DOWNLOAD"
 #echo "PKGNAMES=$PKGNAMES"
 
-if [ ! -e "$CACHEDIR" -o ! -d "$CACHEDIR" ]; then
-    echo "*** ERROR: $CACHEDIR doesn't exist or isn't a directory." >&2
-    exit 1
-fi
-
-TMPDIR=$( mktemp -d --tmpdir fetchpkg.XXXXXX )
-if [ $? -ne 0 ]; then
-    echo "*** ERROR: Unable to create a temporary directory.???" >&2
-    exit 1
-fi
-
 for x in $PKGNAMES; do
     # load in the pkginfo file, find the package filename, location, and extension
     PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { print \$1,\$7,\$6,\$8 }" ) )
 	       
     if [ -z "${PKG_DATA[0]}" ]; then
 	if [ -z "${SKIP_MISSING}" ]; then
-	    echo "*** ERROR: Package $x not found in the pkglist." >&2
-	    exit 1
+	    abort_clean 1 "Package $x not found in the pkglist."
 	else
-	    echo "*** WARN: Package $x not found in the pkglist.  Skipping." >&2
+	    warn_msg "Package $x not found in the pkglist.  Skipping."
 	fi
     else
 #	echo "${PKG_DATA[@]}"
@@ -98,45 +111,29 @@ for x in $PKGNAMES; do
 	    wget $WGETFLAGS -O ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${MIRROR}${REMOTE_PATH}/${PKGNAME}
 	    if [ $? -eq 0 ]; then
 		if [ -n "$DO_VERIFY" ]; then
-		    wget $WGETFLAGS -O ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${MIRROR}${REMOTE_PATH}/${PKGNAME}.asc
-		    if [ $? -eq 0 ]; then
-			# md5sum .... (get the checksum from the CHECKSUMS.md5 file for this package)
-			(
-			    cd ${TMPDIR}
-			    tail +13 ${WORKDIR}/CHECKSUMS.md5 | grep -e " ${LOCAL_PATH}/${PKGNAME}" |md5sum -c -
-			)			    
-			if [ $? -eq 0 ]; then
-			    gpg --verify ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} 2> /dev/null
-			    if [ $? -eq 0 ]; then
-				mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${CACHEDIR}/${LOCAL_PATH}/${PKGNAME}
-			    else
-				echo "*** ERROR: gpg signature for package $x incorrect." >&2
-				exit 1
-			    fi
-			else
-			    echo "*** ERROR: md5sum for package $x incorrect." >&2
-			    exit 1
-			fi
-		    else
-			echo "*** ERROR: Unable to download asc file for package $x from [${MIRROR}${REMOTE_PATH}/${PKGNAME}.asc]." >&2
-			exit 1
-		    fi
-		else
+		    wget $WGETFLAGS -O ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${MIRROR}${REMOTE_PATH}/${PKGNAME}.asc || abort_clean 1 "Unable to download asc file for package $x from [${MIRROR}${REMOTE_PATH}/${PKGNAME}.asc] ($?)."
+		    # md5sum .... (get the checksum from the CHECKSUMS.md5 file for this package)
+		    (
+			cd ${TMPDIR}
+			tail +13 ${WORKDIR}/CHECKSUMS.md5 | grep -e " ${LOCAL_PATH}/${PKGNAME}" |md5sum -c -
+		    ) || abort_clean 1 "md5sum for package $x incorrect."   
+		    gpg --verify ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} 2> /dev/null || abort_clean 1 "gpg signature for package $x incorrect."
+		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${CACHEDIR}/${LOCAL_PATH}/${PKGNAME}
+		else		
 		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${CACHEDIR}/${LOCAL_PATH}/${PKGNAME}
 		fi
 	    else
 		if [ -z "${SKIP_MISSING}" ]; then
-		    echo "*** ERROR: Unable to download package $x from [${MIRROR}${REMOTE_PATH}/${PKGNAME}]." >&2
-		    exit 1
+		    abort_clean 1 "Unable to download package $x from [${MIRROR}${REMOTE_PATH}/${PKGNAME}] ($?)."
 		else
-		    echo "*** WARN: Unable to download package $x from [${MIRROR}${REMOTE_PATH}/${PKGNAME}].  Skipping." >&2
+		    warn_msg "Unable to download package $x from [${MIRROR}${REMOTE_PATH}/${PKGNAME}] ($?).  Skipping."
 		fi
 	    fi	
 	else
-	    echo "*** WARN: Package $x already downloaded to cache.  Skipping." >&2
+	    warn_msg "Package $x already downloaded to cache.  Skipping."
 	fi
 	
     fi
 done
 
-rm -rf ${TMPDIR}
+cleanup

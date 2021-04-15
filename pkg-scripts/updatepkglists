@@ -1,22 +1,135 @@
 #!/bin/bash
 
+
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
+}
+
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
+}
+
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
+}
+
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
+}
+
+# config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
+PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
+if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
+    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
+fi
+
+declare -A MIRRORS
+. ${PKGTOOLS_EXTRAS_CONF}
+
+# Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
+# If CACHEDIR or WORKDIR are not set, terminate.
+if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
+    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+fi
+
+TMPDIR=$( mktemp -d --tmpdir updatepkglists.XXXXXX )
+if [ $? -ne 0 ]; then
+    abort_clean 1 "Unable to create a temporary directory ($?)."
+fi
+
+trap 'cleanup' 2 14 15
+
+
 # options:
-#  --gpgkeys: Only updates the GPG keys in the keyring
-# By default, doesn't update GPG keys, but does download and upload:
-#   CHECKSUMS.md5 (concatenated from all repos, each first validated by associated .asc file)
-#   PACKAGES.TXT (concatenated from all repos)
-#   pkglist (built by running over the combined PACKAGES.TXT)
-#   MANIFEST.bz (concatenated from all repos)  (Not yet used. Maybe don't bother right now)
+#  --gpg: Only updates the GPG keys in the keyring
 
-# source the config file
-# ensure the working directory exists
+UPDATE_GPG_KEYS=
 
-# if gpgkeys specified, just download each gpgkeys from the repos (Special case for base?)
-# install the keys, and delete the files
+while [ -n "$1" ]; do
+    case $1 in
+	--gpg)
+	    UPDATE_GPG_KEYS=1
+	    shift
+	    ;;
+	*)
+	    abort_clean 64 "Unknown parameter $1"
+	    ;;
+    esac
+done
+
+#echo "UPDATE_GPG_KEYS=$UPDATE_GPG_KEYS"
 
 
+if [ -n "$UPDATE_GPG_KEYS" ]; then
+    mkdir -p ~/.gnupg
 
-# As we download each file, place it in a temp spot.  Once its downloaded ok and validated, add to the real spot.
-# Only delete old ones once we have at least got something new (CHECKSUMS.md5 and PACKAGES.TXT both download ok and validate from at least one repo)
-# build pkglist at the end
+    BASE_KEY_FETCHED=
+    for x in "${!MIRRORS[@]}"; do
+	case "$x" in
+	    extra|pasture|patches|testing|slackware|slackware64)
+		# Only fetch the base key once, if any of these are in our mirror list
+		if [ -z "$BASE_KEY_FETCHED" ]; then
+		    BASE_MIRROR=$(echo ${MIRRORS[$x]} | sed -e "s/\/${x}\/\$/\//")
+		    wget $WGETFLAGS -O $TMPDIR/base.gpg "${BASE_MIRROR}GPG-KEY" || abort_clean 1 "Unable to fetch the gpg key from the base Slackware repository: [${BASE_MIRROR}GPG-KEY] ($?)."
+		    gpg --import $TMPDIR/base.gpg
+		    BASE_KEY_FETCHED=1
+		fi
+		;;
+	    *)
+		# For all other repos, assume there is a key right in place
+		wget $WGETFLAGS -O $TMPDIR/$x.gpg "${MIRRORS[$x]}GPG-KEY" || abort_clean 1 "Unable to feth the gpg key for repo $x: [${MIRRORS[$x]}GPG-KEY] ($?)."
+		gpg --import $TMPDIR/$x.gpg
+		;;
+	esac
+    done
+   
+else
+    mkdir -p ${WORKDIR}
+    
+    for x in "${!MIRRORS[@]}"; do
+	mkdir -p ${TMPDIR}/${x}
+	wget $WGETFLAGS -nd -P ${TMPDIR}/${x} ${MIRRORS[$x]}{CHECKSUMS.md5,CHECKSUMS.md5.asc,PACKAGES.TXT} || abort_clean 1 "Unable to fetch package list and/or checksum files from repo $x [${MIRRORS[$x]}] ($?)."
+	gpg --verify ${TMPDIR}/${x}/CHECKSUMS.md5.asc ${TMPDIR}/${x}/CHECKSUMS.md5 2> /dev/null || abort_clean 1 "gpg signature for repo $x's CHECKSUMS.md5 file incorrect."
+	if grep -q -s -e ' \./PACKAGES.TXT$' ${TMPDIR}/${x}/CHECKSUMS.md5; then
+	    (
+		cd ${TMPDIR}/${x}
+		tail +13 ${TMPDIR}/${x}/CHECKSUMS.md5 | grep -e ' \./PACKAGES.TXT$' |md5sum -c -
+	    ) || abort_clean 1 "md5sum for repo $x's PACKAGES.TXT incorrect."   
+	else
+	    warn_msg "Repo $x's PACKAGES.TXT isn't in its CHECKSUMS.md5 file, so can't be validated.  Ignoring."
+	fi
 
+	# Correct the checksums file before merging
+	if [ ! -e ${TMPDIR}/CHECKSUMS.md5.head ] && grep -m 1 -q -s -e '^MD5 message digest' ${TMPDIR}/${x}/CHECKSUMS.md5; then
+	    awk '{print} /^MD5 message digest/ {exit}' ${TMPDIR}/${x}/CHECKSUMS.md5 > ${TMPDIR}/CHECKSUMS.md5.head
+	fi
+	if grep -m 1 -q -s -e '^MD5 message digest' ${TMPDIR}/${x}/CHECKSUMS.md5; then
+	    awk 'doprint {print} /^MD5 message digest/ {doprint=1}' ${TMPDIR}/${x}/CHECKSUMS.md5
+	else
+	    cat ${TMPDIR}/${x}/CHECKSUMS.md5
+	fi | sed -E -e "s/ \\.\\// .\\/${x}\\//" >> ${TMPDIR}/CHECKSUMS.md5.values
+
+	# Don't correct the packages file, just merge it
+	cat ${TMPDIR}/${x}/PACKAGES.TXT >> ${TMPDIR}/PACKAGES.TXT
+    done
+
+    # After fixing up and merging all the CHECKSUMS.md5 and PACKAGES.TXT files into one top level set,
+    # go through the CHECKSUMS.md5.values file looking for packages to add to the pkglist file
+    grep -e '\.t[blxg]z$' ${TMPDIR}/CHECKSUMS.md5.values | sed -E -e 's/^[^ ]+ +(\.\/.*)\/(([^ ]+)-([^-]+)-([^-]+)-([^-]+))\.(t[blxg]z)$/VALID \1 \3 \4 \5 \6 \2 \1 \7/'|grep -e VALID|sed -E -e 's/^VALID //; s/^\.\///; s/^([^ \/]+)\/[^ ]* /\1 /' > ${TMPDIR}/pkglist
+
+    # Combine the values and header for the CHECKSUM file
+    cat ${TMPDIR}/CHECKSUMS.md5.head ${TMPDIR}/CHECKSUMS.md5.values > ${TMPDIR}/CHECKSUMS.md5
+
+    # We would have aborted if something unrecoverable was found. Move the files over to the WORKDIR.
+    mv -f ${TMPDIR}/{pkglist,CHECKSUMS.md5,PACKAGES.TXT} ${WORKDIR}/
+
+fi
+
+
+cleanup

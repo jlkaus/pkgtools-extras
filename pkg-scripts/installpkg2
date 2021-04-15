@@ -1,12 +1,34 @@
 #!/bin/bash
 
+
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
+}
+
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
+}
+
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
+}
+
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
+}
+
 TOOLDIR=${TOOLDIR:-/usr/sbin}
 
 # config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
 PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
 if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    echo "*** ERROR: ${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting." >&2
-    exit 64
+    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
 fi
 
 declare -A MIRRORS
@@ -15,13 +37,11 @@ declare -A MIRRORS
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
 # If CACHEDIR or WORKDIR are not set, terminate.
 if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
-    echo "*** ERROR: CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting." >&2
-    exit 64
+    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
-    echo "*** ERROR: No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist." >&2
-    exit 1
+    abort_clean 1 "No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist."
 fi
 
 
@@ -97,15 +117,14 @@ if [ -n "$DO_FETCH" ]; then
 fi
 
 if [ ! -e "$CACHEDIR" -o ! -d "$CACHEDIR" ]; then
-    echo "*** ERROR: $CACHEDIR doesn't exist or isn't a directory." >&2
-    exit 1
+    abort_clean 1 "$CACHEDIR doesn't exist or isn't a directory."
 fi
 
 for x in $PKGNAMES; do
     # load in the pkginfo file, find the package filename, location, and extension
     PKG_LOCATION=$(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { printf \"%s/%s.%s\n\",\$7,\$6,\$8 }" )
     if [ -z "$PKG_LOCATION" ]; then
-	echo "*** WARN: Package $x not found in the pkglist.  Skipping." >&2
+	warn_msg "Package $x not found in the pkglist.  Skipping."
     else
 #	echo $PKG_LOCATION
 	
@@ -118,11 +137,12 @@ for x in $PKGNAMES; do
 		    rm ${CACHEDIR}/$PKG_LOCATION
 		fi
 	    else
-		echo "*** WARN: $x installation failed: $?.  Not removing from cache." >&2
+		warn_msg "$x installation failed: $?.  Not removing from cache."
 	    fi
 	else
-	    echo "*** WARN: $x not found in the cache.  Expected at [${CACHEDIR}/$PKG_LOCATION].  Skipping." >&2
+	    warn_msg "$x not found in the cache.  Expected at [${CACHEDIR}/$PKG_LOCATION].  Skipping."
 	fi
     fi
 done
 
+cleanup

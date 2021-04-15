@@ -1,5 +1,4 @@
 pkg-scripts:
-5. Make updatepkglists create and replace the slackpkg files
 
 kernel-scripts:
 1. Update check-kernels
@@ -7,8 +6,13 @@ kernel-scripts:
 3. Make install-new-kernels work with the other tools
 4. Make remove-unused-kernels work with the other tools
 
-slackbuild:
-1. Create a rough slackbuild to generate a valid slackware package of the scripts, config, and man pages
+package building:
+1. Create a makefile to handle install, with PREFIX support, so the slackbuild can use it instead of
+   directly having the slackbuild put the files in place.  May also build the man pages and compress them, etc.
+   Allow installing only the pkg-scripts if you don't want the kernel-scripts (and associated man pages).  Allow
+   the reverse as well, for orthogonality, but probably that wouldn't normally be used (kernel-scripts depends on
+   pkg-scripts being available).
+2. Create a rough slackbuild to generate a valid slackware package of the scripts, config, and man pages
 
 man-pages:
 1. Rough in man pages for the pkg-script tools
