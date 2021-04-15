@@ -1,5 +1,4 @@
 pkg-scripts:
-2. Make fetchpkg work on the slackpkg files
 5. Make updatepkglists create and replace the slackpkg files
 
 kernel-scripts:
