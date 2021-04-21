@@ -1,21 +1,50 @@
+# WORKDIR could be set to /var/lib/slackpkg if slackpkg is installed.  In that case,
+# updatepkglists isn't needed, and instead slackpkg update could be used to keep the pkglist
+# up to date.  If slackpkgplus is installed, all the better...  Both sets of tools can co-exist 
+# just fine, but, of course, there is no locking between the two sets of tools updating or using
+# the package lists.
 WORKDIR=/var/lib/pkgtools-extras
-CACHEDIR=/var/cache/packages
+# WORKDIR=/var/lib/slackpkg
+
+# CACHEDIR is only used by the --cache option to fetchpkg.  If that's not used, it doesn't need to
+# be set.  The /var/cache/packages setting would match slackpkg, and shouldn't interfere, even with
+# different WORKDIRs, though obviously there is no locking between slackpkg updating the cache and
+# pkgtools-extras doing so.
+# CACHEDIR=/var/cache/packages
+
+# Whatever options added here will be used by each wget call in fetchpkg and updatepkglists.
+# Making it empty, or not-defined, is fine too.
 WGETFLAGS="--passive-ftp"
 
+# Should be able to set this to a particular version (instead of current), or the non-64-bit
+# version, if you want.
+# Using a specific mirror, rather than the load-balancing distributor, is not recommended, but
+# certainly possible.
 BASE_MIRROR=https://mirrors.slackware.com/slackware/slackware64-current/
 
+# Add whichever repositories you wish here, with a unique repo key.
+# The keys given below will match those used by slackpkgplus, but if not
+# using slackpkg's WORKDIR, CACHEDIR, or pkglist, they certainly don't need to match.
+# Note, however, that the "repos" in the base slackware shouldn't be modified (though could
+# be deleted, if not desired), since updatepkglists uses these names to detect when the base's GPG_KEY should be
+# fetched instead of a repo-specific one, and how to correct the remote paths due to the different
+# paths in CHECKSUMS.md5 for the base repos and external repos, etc.
+# For non-64-bit slackware, slackware is also detected similarly.
+
+# Note if no MIRRORS keys are defined, nothing should break, but, of course, the resultant pkglist would be
+# empty...
+
+# Base sub-repos
 MIRRORS['extra']=${BASE_MIRROR}extra/
 MIRRORS['pasture']=${BASE_MIRROR}pasture/
 MIRRORS['patches']=${BASE_MIRROR}patches/
 MIRRORS['slackware64']=${BASE_MIRROR}slackware64/
 MIRRORS['testing']=${BASE_MIRROR}testing/
 
+# External repos
+# MIRRORS['SLACKPKGPLUS_slackpkgplus']=http://slakfinder.org/slackpkg+15/
+# MIRRORS['SLACKPKGPLUS_restricted']=http://bear.alienbase.nl/mirrors/people/alien/restricted_sbrepos/current/x86_64/
+# MIRRORS['SLACKPKGPLUS_alienbob']=http://bear.alienbase.nl/mirrors/people/alien/sbrepos/current/x86_64/
+# MIRRORS['SLACKPKGPLUS_multilib']=http://bear.alienbase.nl/mirrors/people/alien/multilib/14.2/
 
-MIRRORS['SLACKPKGPLUS_slackpkgplus']=http://slakfinder.org/slackpkg+15/
-MIRRORS['SLACKPKGPLUS_restricted']=http://bear.alienbase.nl/mirrors/people/alien/restricted_sbrepos/current/x86_64/
-MIRRORS['SLACKPKGPLUS_alienbob']=http://bear.alienbase.nl/mirrors/people/alien/sbrepos/current/x86_64/
-
-
-
-#MIRRORS['SLACKPKGPLUS_multilib']=http://bear.alienbase.nl/mirrors/people/alien/multilib/14.2/
 
