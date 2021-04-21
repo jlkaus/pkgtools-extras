@@ -26,7 +26,7 @@ function abort_clean() {
 # config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
 PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
 if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
+    abort_clean 78 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
 fi
 
 declare -A MIRRORS
@@ -35,12 +35,12 @@ declare -A MIRRORS
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
 # If WORKDIR is not set, terminate.
 if [ -z "$WORKDIR" ]; then
-    abort_clean 64 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+    abort_clean 78 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 TMPDIR=$( mktemp -d --tmpdir updatepkglists.XXXXXX )
 if [ $? -ne 0 ]; then
-    abort_clean 1 "Unable to create a temporary directory ($?)."
+    abort_clean 73 "Unable to create a temporary directory ($?)."
 fi
 
 trap 'cleanup' 2 14 15

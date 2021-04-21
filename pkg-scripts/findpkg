@@ -26,7 +26,7 @@ function abort_clean() {
 # config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
 PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
 if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
+    abort_clean 78 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
 fi
 
 declare -A MIRRORS
@@ -35,11 +35,11 @@ declare -A MIRRORS
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
 # If WORKDIR is not set, terminate.
 if [ -z "$WORKDIR" ]; then
-    abort_clean 64 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+    abort_clean 78 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
-    abort_clean 1 "No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist."
+    abort_clean 72 "No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist."
 fi
 
 

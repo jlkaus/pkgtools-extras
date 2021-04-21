@@ -26,7 +26,7 @@ function abort_clean() {
 # config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
 PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
 if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    abort_clean 64 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
+    abort_clean 78 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
 fi
 
 declare -A MIRRORS
@@ -35,16 +35,16 @@ declare -A MIRRORS
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
 # If WORKDIR is not set, terminate.
 if [ -z "$WORKDIR" ]; then
-    abort_clean 64 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+    abort_clean 78 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" -o ! -e "${WORKDIR}/CHECKSUMS.md5" ]; then
-    abort_clean 1 "No pkglist (or PACKAGES.TXT, or CHECKSUMS.md5) found in ${WORKDIR}.  Please update the pkglist."
+    abort_clean 72 "No pkglist (or PACKAGES.TXT, or CHECKSUMS.md5) found in ${WORKDIR}.  Please update the pkglist."
 fi
 
 TMPDIR=$( mktemp -d --tmpdir fetchpkg.XXXXXX )
 if [ $? -ne 0 ]; then
-    abort_clean 1 "Unable to create a temporary directory ($?)."
+    abort_clean 73 "Unable to create a temporary directory ($?)."
 fi
 
 trap 'cleanup' 2 14 15
@@ -81,7 +81,7 @@ while [ -n "$1" ]; do
 	    shift
 
 	    if [ -z "$CACHEDIR" ]; then
-		abort_clean 64 "CACHEDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file when using --cache.  Aborting."
+		abort_clean 78 "CACHEDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file when using --cache.  Aborting."
 	    fi
 	    ;;
 	--dir)
