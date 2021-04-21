@@ -33,9 +33,9 @@ declare -A MIRRORS
 . ${PKGTOOLS_EXTRAS_CONF}
 
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
-# If CACHEDIR or WORKDIR are not set, terminate.
-if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
-    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+# If WORKDIR is not set, terminate.
+if [ -z "$WORKDIR" ]; then
+    abort_clean 64 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" -o ! -e "${WORKDIR}/CHECKSUMS.md5" ]; then
@@ -50,16 +50,21 @@ fi
 trap 'cleanup' 2 14 15
 
 # Options:
-#   --force: Download it again, replacing what might already be in the cache.
+#   --force: Download it again, replacing what might already be in place.
+#   --cache: Download to the CACHEDIR from the config file, at the appropriate relative directory
+#   --dir DIRECTORY: Download packages to DIRECTORY, with no hierarchy
 #   --no-verify: Don't verify the downloaded file
 #   --skip-missing: If a package isn't available at the mirror, skip it.
 # Arguments:
 #   PKGNAMES: a list of packagenames to download.  Must include full name, with version, arch, build number, etc.
+# By default, downloads the packages to the current directory, with no hierarchy.
 
 DO_VERIFY=1
 FORCE_DOWNLOAD=
 SKIP_MISSING=
 PKGNAMES=
+TARGET_DIR=$(pwd)
+USE_CACHE=
 
 while [ -n "$1" ]; do
     case $1 in
@@ -69,6 +74,19 @@ while [ -n "$1" ]; do
 	    ;;
 	--force)
 	    FORCE_DOWNLOAD=1
+	    shift
+	    ;;
+	--cache)
+	    USE_CACHE=1
+	    shift
+
+	    if [ -z "$CACHEDIR" ]; then
+		abort_clean 64 "CACHEDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file when using --cache.  Aborting."
+	    fi
+	    ;;
+	--dir)
+	    shift
+	    TARGET_DIR=$1
 	    shift
 	    ;;
 	--skip-missing)
@@ -88,7 +106,7 @@ done
 
 for x in $PKGNAMES; do
     # load in the pkginfo file, find the package filename, location, and extension
-    PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { print \$1,\$7,\$6,\$8 }" ) )
+    PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { print \$1,\$7,\$6,\$8; exit }" ) )
 	       
     if [ -z "${PKG_DATA[0]}" ]; then
 	if [ -z "${SKIP_MISSING}" ]; then
@@ -105,9 +123,13 @@ for x in $PKGNAMES; do
 	REMOTE_PATH=$(echo "$LOCAL_PATH" |sed -e "s/^\\.\\/$REPO\\///")
 	PKGNAME="${PKG_DATA[2]}.${PKG_DATA[3]}"
 
-	mkdir -p ${CACHEDIR}/${LOCAL_PATH}
+	if [ -n "$USE_CACHE" ]; then
+	    TARGET_DIR=${CACHEDIR}/${LOCAL_PATH}
+	fi
+	
+	mkdir -p ${TARGET_DIR}
 	mkdir -p ${TMPDIR}/${LOCAL_PATH}
-	if [ ! -e "${CACHEDIR}/${LOCAL_PATH}/${PKGNAME}" -o -n "$FORCE_DOWNLOAD" ]; then
+	if [ ! -e "${TARGET_DIR}/${PKGNAME}" -o -n "$FORCE_DOWNLOAD" ]; then
 	    wget $WGETFLAGS -O ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${MIRROR}${REMOTE_PATH}/${PKGNAME}
 	    if [ $? -eq 0 ]; then
 		if [ -n "$DO_VERIFY" ]; then
@@ -118,9 +140,9 @@ for x in $PKGNAMES; do
 			tail +13 ${WORKDIR}/CHECKSUMS.md5 | grep -e " ${LOCAL_PATH}/${PKGNAME}" |md5sum -c -
 		    ) || abort_clean 1 "md5sum for package $x incorrect."   
 		    gpg --verify ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} 2> /dev/null || abort_clean 1 "gpg signature for package $x incorrect."
-		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${CACHEDIR}/${LOCAL_PATH}/${PKGNAME}
+		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${TARGET_DIR}/${PKGNAME}
 		else		
-		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${CACHEDIR}/${LOCAL_PATH}/${PKGNAME}
+		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${TARGET_DIR}/${PKGNAME}
 		fi
 	    else
 		if [ -z "${SKIP_MISSING}" ]; then
@@ -130,7 +152,7 @@ for x in $PKGNAMES; do
 		fi
 	    fi	
 	else
-	    warn_msg "Package $x already downloaded to cache.  Skipping."
+	    warn_msg "Package $x already downloaded.  Skipping."
 	fi
 	
     fi

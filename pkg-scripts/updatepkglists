@@ -33,9 +33,9 @@ declare -A MIRRORS
 . ${PKGTOOLS_EXTRAS_CONF}
 
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
-# If CACHEDIR or WORKDIR are not set, terminate.
-if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
-    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+# If WORKDIR is not set, terminate.
+if [ -z "$WORKDIR" ]; then
+    abort_clean 64 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 TMPDIR=$( mktemp -d --tmpdir updatepkglists.XXXXXX )

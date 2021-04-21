@@ -12,7 +12,6 @@ package building:
    Allow installing only the pkg-scripts if you don't want the kernel-scripts (and associated man pages).  Allow
    the reverse as well, for orthogonality, but probably that wouldn't normally be used (kernel-scripts depends on
    pkg-scripts being available).
-2. Create a rough slackbuild to generate a valid slackware package of the scripts, config, and man pages
 
 man-pages:
 1. Rough in man pages for the pkg-script tools

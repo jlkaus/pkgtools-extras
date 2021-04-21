@@ -33,9 +33,9 @@ declare -A MIRRORS
 . ${PKGTOOLS_EXTRAS_CONF}
 
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
-# If CACHEDIR or WORKDIR are not set, terminate.
-if [ -z "$CACHEDIR" -o -z "$WORKDIR" ]; then
-    abort_clean 64 "CACHEDIR and WORKDIR both need to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+# If WORKDIR is not set, terminate.
+if [ -z "$WORKDIR" ]; then
+    abort_clean 64 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
@@ -46,6 +46,8 @@ fi
 
 # options:
 #   --info: Show the slack-desc for each package (from PACKAGES.TXT or the installed package file)
+#   --link: Show the direct download link for each package, if known.  Note that this is already included
+#           for --info.
 #   --status=STATUSLIST: Filter the results by install-status (or a comma-separated list of install-statuses):
 #           installed (or inst or i)
 #           available (or avail or a)
@@ -60,6 +62,7 @@ fi
 #   PATTERN: swizzled before using as grep to the pkglist and the installed packages names
 
 SHOW_INFO=
+SHOW_LINK=
 STATUS_LIST="installed available"
 REPO_LIST="__unknown__ __available__"
 PATTERN=
@@ -67,6 +70,10 @@ while [ -n "$1" ]; do
     case $1 in
 	--info)
 	    SHOW_INFO=1
+	    shift
+	    ;;
+	--link)
+	    SHOW_LINK=1
 	    shift
 	    ;;
 	--status)
@@ -112,7 +119,6 @@ for x in $STATUS_LIST; do
 done
 
 #echo "WORKDIR=$WORKDIR"
-#echo "CACHEDIR=$CACHEDIR"
 #echo "MIRRORS="
 #for x in "${!MIRRORS[@]}"; do
 #    echo "    $x ${MIRRORS[$x]}"
@@ -139,20 +145,31 @@ MATCHING_PKGS=$(
 	     )
 
 for x in ${MATCHING_PKGS}; do
-    AREPO=$(cat ${WORKDIR}/pkglist | awk "\$6~/$x/ {print \$1; exit}")
+    PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { print \$1,\$7,\$6,\$8; exit }" ) )
+    AREPO=${PKG_DATA[0]}
     ISTATE=avail
     if [ -e "/var/lib/pkgtools/packages/${x}" ]; then
 	ISTATE=inst
     fi
     if [ -z "$AREPO" ]; then
 	AREPO=__unknown__
+	REMOTE_PATH="__unknown__"
+	DIRECT_LINK="__unknown__"
+    else
+	MIRROR=${MIRRORS[$AREPO]}
+	LOCAL_PATH=${PKG_DATA[1]}
+	REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$AREPO\\///")
+	PKGNAME="${PKG_DATA[2]}.${PKG_DATA[3]}"
+	DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
     fi
 
     if [ -n "$INCLUDE_INSTALLED" -a "$ISTATE" = "inst" ] || [ -n "$INCLUDE_AVAILABLE" -a "$ISTATE" = "avail" ]; then
 	if echo "$AREPO" |grep -E -s -q -e "^${REPO_LIST}\$"; then
 	    if [ -n "$SHOW_INFO" ]; then
 		echo "PACKAGE_NAME: $x"
+		echo "PACKAGE_LOCATION: $REMOTE_PATH"
 		echo "REPOSITORY: $AREPO"
+		echo "DIRECT_LINK: $DIRECT_LINK"
 		if [ "$ISTATE" = "inst" ]; then
 		    # For installed packages, the slack-desc should be in the package file
 		    # in /var/lib/pkgtools/packages/PKGNAME:
@@ -162,6 +179,7 @@ for x in ${MATCHING_PKGS}; do
 		    # FILE LIST:
 		    # {exit}
 		    echo "STATUS: Installed"
+		    echo "PACKAGE_DESCRIPTION:"
 		    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' /var/lib/pkgtools/packages/${x}
 		    echo
 		    
@@ -175,11 +193,16 @@ for x in ${MATCHING_PKGS}; do
 		    # <BLANK>
 		    # {exit}
 		    echo "STATUS: Available"
+		    echo "PACKAGE_DESCRIPTION:"
 		    awk "doprint && /^\$/ {exit} doprint {print} isfound && /^PACKAGE DESCRIPTION:\$/ {doprint=1} /^PACKAGE NAME: +${x}\.t..\$/ {isfound=1}" ${WORKDIR}/PACKAGES.TXT
 		    echo
 		fi
 	    else
-		printf "%-6s %-26s %s\n" $ISTATE $AREPO $x
+		if [ -n "$SHOW_LINK" ]; then
+		    printf "%-6s %-26s %-22s %-40s %s\n" $ISTATE $AREPO $REMOTE_PATH $x $DIRECT_LINK
+		else
+		    printf "%-6s %-26s %-22s %s\n" $ISTATE $AREPO $REMOTE_PATH $x
+		fi
 	    fi
 	fi
     fi
