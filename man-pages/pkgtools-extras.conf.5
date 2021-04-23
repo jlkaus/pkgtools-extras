@@ -1,4 +1,4 @@
-.TH PKGTOOLS\-EXTRAS.CONF 8 "2021-04-22" "pkgtools-extras 0.8.0"
+.TH PKGTOOLS\-EXTRAS.CONF 5 "2021-04-22" "pkgtools-extras 0.8.0"
 .SH NAME
 \fBpkgtools\-extras.conf\fR \- Configuration data for \fBpkgtools\-extras\fR.
 .SH DESCRIPTION
@@ -23,10 +23,12 @@ If you wish to use the package list meta-data maintained by
 you can specify the same \fBWORKDIR\fR here as used by your
 .BR slackpkg.conf (5)
 configuration.
-If you do that, please use
+If you do that, note that
+.BR updatepkglists (8)
+will refuse to work.
+Please use
 .BR slackpkg "(8) " update
-to maintain the meta-data, rather than
-.BR updatepkglists (8).
+to maintain the meta-data, instead.
 .PP This configuration option must be set for the \fBpkgtools\-extras\fR tools to work at all.
 .TP
 .B CACHEDIR
@@ -75,6 +77,10 @@ It would probably be confusing.
 Most remote repository names can be anything,
 but the ones for the base Slackware sub-repositories should match their usual names,
 which are used to detect that they are handled somewhat specially.
+If using the package lists managed by
+.BR slackpkg (8),
+the non-base remote repository names must match those used by \fBslackpkg+\fR.
+That is, the names must be prefixed by \fBSLACKPKGPLUS_\fR.
 .SS Supported Repositories
 Any remote repository that has the standard Slackware package repository meta-files
 (\fIGPG\-KEY\fR, \fICHECKSUMS.md5\fR, \fICHECKSUMS.md5.asc\fR, and \fIPACKAGES.TXT\fR)
@@ -87,4 +93,6 @@ Local repositories with the same meta-files can also be used, using \fBfile://\f
 .SH SEE ALSO
 .BR findpkg (8),
 .BR fetchpkg (8),
-.BR updatepkglists (8).
+.BR updatepkglists (8),
+.BR slackpkg.conf (5),
+.BR slackpkg (8).

@@ -38,6 +38,10 @@ if [ -z "$WORKDIR" ]; then
     abort_clean 78 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
 fi
 
+if [ "$WORKDIR" = "/var/lib/slackpkg" ]; then
+    abort_clean 78 "WORKDIR must not be set to /var/lib/slackpkg if using updatepkglists.  Please use \"slackpkg update\" instead, or change WORKDIR."
+fi
+
 TMPDIR=$( mktemp -d --tmpdir updatepkglists.XXXXXX )
 if [ $? -ne 0 ]; then
     abort_clean 73 "Unable to create a temporary directory ($?)."

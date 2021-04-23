@@ -55,27 +55,20 @@ For proper operation of
 See
 .BR pkgtools\-extras.conf (5)
 for details.
+.SH NOTES
+If \fBWORKDIR\fR in
+.BR pkgtools\-extras.conf (5)
+is configured to use the standard
+.BR slackpkg (8)
+\fBWORKDIR\fR,
+.B updatepkglists
+will refuse to operate, for safety.
+Please use
+.BR slackpkg "(8) " update
+to update the package lists.
 .SH BUGS
 There is no locking of the files in the working directory.
 As a result, multiple instances could interfere with each other.
-Also, if using the same working directory or cache directory as
-.BR slackpkg (8),
-using these tools at the same time could result in unintended behavior.
-.PP
-Furthermore, while every attempt was made to use the same meta-data format as
-.BR slackpkg (8),
-using
-.BR updatepkglists (8)
-to update the metadata on behalf of
-.BR slackpkg (8)
-is not supported and probably not a good idea.
-Either specify a different \fBWORKDIR\fR in
-.BR pkgtools\-extras.conf (5)
-or do not use
-.BR updatepkglists (8)
-at all (use
-.BR slackpkg "(8) " update
-instead).
 .SH EXAMPLES
 To update the gpg public keys for the remote repositories:
 .PP
@@ -97,4 +90,5 @@ To update remote package repository meta-data files:
 .SH SEE ALSO
 .BR findpkg (8),
 .BR fetchpkg (8),
-.BR pkgtools-extras.conf (5).
+.BR pkgtools-extras.conf (5),
+.BR slackpkg (8).

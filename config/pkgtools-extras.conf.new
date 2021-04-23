@@ -3,8 +3,8 @@
 # up to date.  If slackpkgplus is installed, all the better...  Both sets of tools can co-exist 
 # just fine, but, of course, there is no locking between the two sets of tools updating or using
 # the package lists.
-WORKDIR=/var/lib/pkgtools-extras
-# WORKDIR=/var/lib/slackpkg
+# WORKDIR=/var/lib/pkgtools-extras
+WORKDIR=/var/lib/slackpkg
 
 # PKGTOOLS_INSTALLED_PKGS_DIR can't usefully be changed on Slackware, but is declared here for consistency.
 PKGTOOLS_WORKDIR=/var/lib/pkgtools
@@ -14,7 +14,7 @@ PKGTOOLS_INSTALLED_PKGS_DIR=${PKGTOOLS_WORKDIR}/packages
 # be set.  The /var/cache/packages setting would match slackpkg, and shouldn't interfere, even with
 # different WORKDIRs, though obviously there is no locking between slackpkg updating the cache and
 # pkgtools-extras doing so.
-# CACHEDIR=/var/cache/packages
+CACHEDIR=/var/cache/packages
 
 # Whatever options added here will be used by each wget call in fetchpkg and updatepkglists.
 # Making it empty, or not-defined, is fine too.
@@ -47,8 +47,7 @@ WGETFLAGS="--passive-ftp"
 # paths in CHECKSUMS.md5 for the base repos and external repos, etc.
 # For non-64-bit slackware, slackware is also detected similarly.
 
-# Note if no MIRRORS keys are defined, nothing should break, but, of course, the resultant pkglist would be
-# empty...
+# Note if no MIRRORS keys are defined, nothing should break, but, of course, no packages would be ever found.
 
 # Base sub-repos
 #MIRRORS['extra']=${BASE_MIRROR}extra/
