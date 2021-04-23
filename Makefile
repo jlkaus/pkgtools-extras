@@ -7,7 +7,7 @@ bindir ?= $(exec_prefix)/bin
 sbindir ?= $(exec_prefix)/sbin
 libexecdir ?= $(exec_prefix)/libexec
 datarootdir ?= $(prefix)/share
-datadir ?= $(datarootdir)
+#datadir ?= $(datarootdir)
 # Here to remind myself of it (and its normal default, $(prefix)/etc) but cannot be usefully changed
 # for these scripts, since they are not actually built, and have to find their config file somewhere by default...
 sysconfdir ?= /etc
@@ -24,7 +24,8 @@ sysconfdir ?= /etc
 #infodir ?= $(datarootdir)/info
 #libdir ?= $(exec_prefix)/lib
 #localedir ?= $(datarootdir)/locale
-mandir ?= $(datarootdir)/man
+# Normally this is $(datarootdir)/man, but Slackware prefers $(prefix)/man
+mandir ?= $(prefix)/man
 man5dir ?= $(mandir)/man5
 man8dir ?= $(mandir)/man8
 
@@ -51,9 +52,10 @@ dist/pkgtools-extras-$(VERSION).tar.gz:
 sbo: sbo/pkgtools-extras.info sbo/pkgtools-extras.SlackBuild sbo/slack-desc sbo/README.SBO dist/pkgtools-extras-$(VERSION).tar.gz
 	$(eval MD5SUM = $(firstword $(shell md5sum dist/pkgtools-extras-$(VERSION).tar.gz)))
 	mkdir -p dist
-	cp sbo/README.SBO dist/README
-	cp sbo/slack-desc dist/slack-desc
+	cp -a sbo/README.SBO dist/README
+	cp -a sbo/{slack-desc,doinst.sh} dist/
 	sed -e 's/^TAG=.*$$/TAG=$${TAG:-_SBo}/; s/^VERSION=.*$$/VERSION=$${VERSION:-$(VERSION)}/;' sbo/pkgtools-extras.SlackBuild > dist/pkgtools-extras.SlackBuild
+	chmod +x dist/pkgtools-extras.SlackBuild
 	sed -e 's/{VERSION}/$(VERSION)/g; s/{MD5SUM}/$(MD5SUM)/' sbo/pkgtools-extras.info > dist/pkgtools-extras.info
 
 clean-pkgtools:

@@ -2,7 +2,6 @@
 
 # Generate a slackware package from the source
 
-
 PRGNAM=pkgtools-extras
 VERSION=${VERSION:?Must specify VERSION.}
 BUILD=${BUILD:-1}
@@ -46,18 +45,18 @@ make install DESTDIR=$PKG prefix=/usr localstatedir=/var sysconfdir=/etc
 find $PKG -print0 | xargs -0 file | grep -e "executable" -e "shared object" | grep ELF \
   | cut -f 1 -d : | xargs strip --strip-unneeded 2> /dev/null || true
 
-find $PKG/usr/share/man -type f -exec gzip -9 {} \;
-for i in $( find $PKG/usr/share/man -type l ) ; do ln -s $( readlink $i ).gz $i.gz ; rm $i ; done
+find $PKG/usr/man -type f -exec gzip -9 {} \;
+for i in $( find $PKG/usr/man -type l ) ; do ln -s $( readlink $i ).gz $i.gz ; rm $i ; done
 
-mkdir -p $PKG/usr/share/doc/$PRGNAM-$VERSION
+mkdir -p $PKG/usr/doc/$PRGNAM-$VERSION
 cp -a \
    README.md \
-   $PKG/usr/share/doc/$PRGNAM-$VERSION
+   $PKG/usr/doc/$PRGNAM-$VERSION
 cp -a \
    config/$PRGNAM.conf.new \
-   $PKG/usr/share/doc/$PRGNAM-$VERSION/$PRGNAM.conf.sample
+   $PKG/usr/doc/$PRGNAM-$VERSION/$PRGNAM.conf.sample
 
-cat $CWD/$PRGNAM.SlackBuild > $PKG/usr/share/doc/$PRGNAM-$VERSION/$PRGNAM.SlackBuild
+cat $CWD/$PRGNAM.SlackBuild > $PKG/usr/doc/$PRGNAM-$VERSION/$PRGNAM.SlackBuild
 
 mkdir -p $PKG/install
 cat $CWD/slack-desc > $PKG/install/slack-desc
