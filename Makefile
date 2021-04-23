@@ -48,13 +48,13 @@ dist/pkgtools-extras-$(VERSION).tar.gz:
 	mkdir -p dist
 	git archive --format=tar --prefix=pkgtools-extras-$(VERSION)/ v$(VERSION) |gzip > dist/pkgtools-extras-$(VERSION).tar.gz
 
-sbo: package-building/pkgtools-extras.info package-building/pkgtools-extras.SlackBuild package-building/slack-desc package-building/README.SBO dist/pkgtools-extras-$(VERSION).tar.gz
+sbo: sbo/pkgtools-extras.info sbo/pkgtools-extras.SlackBuild sbo/slack-desc sbo/README.SBO dist/pkgtools-extras-$(VERSION).tar.gz
 	$(eval MD5SUM = $(firstword $(shell md5sum dist/pkgtools-extras-$(VERSION).tar.gz)))
 	mkdir -p dist
-	cp package-building/README.SBO dist/README
-	cp package-building/slack-desc dist/slack-desc
-	sed -e 's/^TAG=.*$$/TAG=$${TAG:-_SBo}/; s/^VERSION=.*$$/VERSION=$${VERSION:-$(VERSION)}/;' package-building/pkgtools-extras.SlackBuild > dist/pkgtools-extras.SlackBuild
-	sed -e 's/{VERSION}/$(VERSION)/g; s/{MD5SUM}/$(MD5SUM)/' package-building/pkgtools-extras.info > dist/pkgtools-extras.info
+	cp sbo/README.SBO dist/README
+	cp sbo/slack-desc dist/slack-desc
+	sed -e 's/^TAG=.*$$/TAG=$${TAG:-_SBo}/; s/^VERSION=.*$$/VERSION=$${VERSION:-$(VERSION)}/;' sbo/pkgtools-extras.SlackBuild > dist/pkgtools-extras.SlackBuild
+	sed -e 's/{VERSION}/$(VERSION)/g; s/{MD5SUM}/$(MD5SUM)/' sbo/pkgtools-extras.info > dist/pkgtools-extras.info
 
 clean-pkgtools:
 
@@ -67,7 +67,7 @@ installdirs:
 
 install-pkgtools: pkgtools installdirs
 	install -t $(DESTDIR)$(sysconfdir) -o root -g root -m 0644 config/pkgtools-extras.conf.new
-	install -t $(DESTDIR)$(sbindir) -o root -g root -m 0755 pkg-scripts/{fetchpkg,findpkg,updatepkglists}
+	install -t $(DESTDIR)$(sbindir) -o root -g root -m 0755 scripts/{fetchpkg,findpkg,updatepkglists}
 	install -t $(DESTDIR)$(man5dir) -o root -g root -m 0644 man-pages/pkgtools-extras.conf.5
 	install -t $(DESTDIR)$(man8dir) -o root -g root -m 0644 man-pages/{fetchpkg,findpkg,updatepkglists}.8
 

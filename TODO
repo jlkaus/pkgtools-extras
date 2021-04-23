@@ -1,20 +1,16 @@
-pkg-scripts:
-
-kernel-scripts:
-1. Update check-kernels
-2. Make set-boot-kernel work
-3. Make install-new-kernels work with the other tools
-4. Make remove-unused-kernels work with the other tools
-
-package building:
-1. Create a makefile to handle install, with PREFIX support, so the slackbuild can use it instead of
-   directly having the slackbuild put the files in place.  May also build the man pages and compress them, etc.
-   Allow installing only the pkg-scripts if you don't want the kernel-scripts (and associated man pages).  Allow
-   the reverse as well, for orthogonality, but probably that wouldn't normally be used (kernel-scripts depends on
-   pkg-scripts being available).
+scripts:
+1. check-kernels should show the currently installed and used kernels.
+   Actually query the lilo.conf and elilo.conf files.
+   Use md5sum comparisons on the files with tagged names in /boot and /boot/efi/EFI/Slackware/ to identify configured kernels.
+   Add options to remove kernels that aren't being used.
+   Add options to install newly available kernels (using findpkg and fetchpkg)
+2. Make set-boot-kernel work.
+   Optionally generate an initrd if it doesn't exist for a kernel that is being configured and needs it (generic kernels)
+   For lilo, update /boot links using the tag names and run lilo
+   For elilo, copy the kernels to /boot/efi/EFI/Slackware/ as the tag names   
 
 man-pages:
-1. create man page for findpkg
-2. create man page for updatepkglists
-3. create man page for kernel-script tools
+3. create man page for check-kernels
+4. create man page for set-boot-kernel
+
 

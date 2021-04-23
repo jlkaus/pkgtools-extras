@@ -1,6 +1,0 @@
-#!/bin/bash
-
-# Run updatepkglists
-# Run findpkg kernel-huge kernel-generic kernel-modules kernel-source --no-installed
-# For each result that isn't installed, run installpkg2 on it.
-

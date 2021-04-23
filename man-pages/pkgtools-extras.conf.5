@@ -1,0 +1,90 @@
+.TH PKGTOOLS\-EXTRAS.CONF 8 "2021-04-22" "pkgtools-extras 0.8.0"
+.SH NAME
+\fBpkgtools\-extras.conf\fR \- Configuration data for \fBpkgtools\-extras\fR.
+.SH DESCRIPTION
+.I pkgtools-extras.conf
+contains configuration information necessary for the correct operation of the
+.BR updatepkglists (8),
+.BR findpkg "(8), and"
+.BR fetchpkg (8)
+tools, which aid in finding and downloading packages from remote Slackware package repositories.
+.PP
+The different configuration options are:
+.TP
+.B WORKDIR
+The location where the package list meta-data is stored/updated by
+.BR updatepkglists (8)
+and read from by
+.BR findpkg (8)
+and
+.BR fetchpkg (8).
+If you wish to use the package list meta-data maintained by
+.BR slackpkg (8),
+you can specify the same \fBWORKDIR\fR here as used by your
+.BR slackpkg.conf (5)
+configuration.
+If you do that, please use
+.BR slackpkg "(8) " update
+to maintain the meta-data, rather than
+.BR updatepkglists (8).
+.PP This configuration option must be set for the \fBpkgtools\-extras\fR tools to work at all.
+.TP
+.B CACHEDIR
+The base location for the local package cache, if used.
+Only necessary if
+.BR fetchpkg (8) \-\-cache
+is used.
+It can match the cache used by
+.BR slackpkg (8),
+specified by \fBTEMP\fR in your
+.BR slackpkg.conf (5)
+configuration.
+.TP
+.B PKGTOOLS_WORKDIR
+Not used by the actual tools.
+Instead, just used to form \fBPKGTOOLS_INSTALLED_PKGS_DIR\fR, below.
+.TP
+.B PKGTOOLS_INSTALLED_PKGS_DIR
+The location that Slackware uses to record installed packages, and associated meta-data.
+On a Slackware system, this shouldn't need to ever change.
+It must be set appropriately for
+.BR findpkg (8)
+to work properly.
+.TP
+.B WGETFLAGS
+Options to use with all wget call in
+.BR fetchpkg (8)
+and
+.BR updatepkglists (8).
+If empty or not defined, no special options will be used.
+.TP
+.B BASE_MIRROR
+Not used by the actual tools.
+Instead, just used as the basis for the primary Slackware package repositories in the \fBMIRRORS\fR configuration,
+to avoid needing to change several URLs when using a different mirror for Slackware itself.
+.TP
+.B MIRRORS
+A hash of remote repository names to mirror URLs.
+For anything useful to happen with these tools, at least one repository mirror should be set in this hash.
+.SH NOTES
+.SS Package Architectures and Slackware Versions
+Version and architecture are controlled by choosing appropriate repository URLs.
+Since the package names should all be unique, and the tools merely search the package lists and potentially download the package files, a mix of different architectures and versions could be included in the active \fBMIRRORS\fR hash, if desired.
+It would probably be confusing.
+.SS Repository Naming
+Most remote repository names can be anything,
+but the ones for the base Slackware sub-repositories should match their usual names,
+which are used to detect that they are handled somewhat specially.
+.SS Supported Repositories
+Any remote repository that has the standard Slackware package repository meta-files
+(\fIGPG\-KEY\fR, \fICHECKSUMS.md5\fR, \fICHECKSUMS.md5.asc\fR, and \fIPACKAGES.TXT\fR)
+can be used and should work.
+Local repositories with the same meta-files can also be used, using \fBfile://\fR URL syntax supported by
+.BR wget (1).
+.SH FILES
+.TP
+.I /etc/pkgtools\-extras.conf
+.SH SEE ALSO
+.BR findpkg (8),
+.BR fetchpkg (8),
+.BR updatepkglists (8).

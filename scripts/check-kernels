@@ -85,3 +85,14 @@ ALL_VERS=$(echo ${ALL_VERS})
 echo Unique: $ALL_VERS
 
 exit
+
+
+# For option to install new kernels:
+# Run updatepkglists
+# Run findpkg kernel-huge kernel-generic kernel-modules kernel-source --no-installed
+# For each result that isn't installed, run installpkg2 on it.
+
+# For option to remove unused kernels:
+# For each kernel that is installed, but not used by a proper tag-name kernel in /boot or the EFI location:
+#   removepkg that kernel (unless it is the currently running kernel)
+# Allow for excluding the latest upstream kernel, or a set of kernels to keep from the command line

@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# Run check-kernels
-# For each kernel that is installed, but not used by a proper tag-name kernel in /boot or the EFI location:
-#   removepkg that kernel (unless it is the currently running kernel)

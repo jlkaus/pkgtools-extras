@@ -1,0 +1,117 @@
+.TH FINDPKG 8 "2021-04-22" "pkgtools-extras 0.8.0"
+.SH NAME
+findpkg \- Simplify finding available Slackware packages from remote repositories.
+.SH SYNOPSIS
+.B findpkg
+[\fB\-\-info\fR]
+[\fB\-\-link\fR]
+[\fB\-\-status\fR \fISTATUSLIST\fR]
+[\fB\-\-repo\fR \fIREPOLIST\fR]
+.IR PATTERNS ...
+.SH DESCRIPTION
+.B findpkg
+uses the package lists maintained by
+.BR updatepkglist (8)
+or
+.BR slackpkg "(8) " update
+(including with \fBslackpkgplus\fR installed)
+to make it easier to find available package versions from remote repositories.
+.PP
+.IR PATTERNS ...
+can be a list of search patterns to look for.
+Only the package name is checked for matches.
+.SH OPTIONS
+.TP
+.B \-\-info
+By default, only a single line of concise information is returned for each package found,
+including installation status, source repository, remote path, and the detailed package name and version.
+If \fB\-\-info\fR is specified, for each package found, the full slack-desc for the package is displayed,
+in addition to the concise package information normally displayed, and a full download URI for the package.
+.TP
+.B \-\-link
+By default, a download link for the package is only included with \-\-info, and not the concise results.
+If \fB\-\-link\fR is specified, the concise results include the download URI for the package as well.
+Using \fB\-\-link\fR with \fB\-\-info\fR acts the same as just using \fB\-\-info\fR.
+.TP
+.B \-\-status \fISTATUSLIST\fR
+By default, packages that are actually installed, as well as those available in a remote repository, are included in the results.
+If \fB\-\-status\fR is specified, the resulting packages are filtered to only include packages with an installation status in the given comma-separated \fISTATUSLIST\fR.
+The available status keywords are:
+.br
+.in +4
+.BR installed " (or " inst ", " i ", " I ")"
+.br
+.BR available " (or " avail ", " a ", " A ")"
+.in
+.TP
+.B \-\-repo \fIREPOLIST\fR
+By default, packages from any configured remote repository, as well as those only installed locally (that is, not available in any remote repository), are all included in the results.
+If \fB\-\-repo\fR is specified, the resulting packages are filtered to only include packages available from a repository in the given comma-separated \fIREPOLIST\fR.
+The repository names must match the key to the \fBMIRRORS\fR array in the
+.BR pkgtools\-extras.conf (8)
+config file, or be one of the special keywords:
+\fB__unknown__\fR (to indicate a package installed locally but unavailable remotely) or
+\fB__available__\fR (to indicate a package available from any of the configured remote repositories).
+.SH EXIT STATUS
+The exit status is \fB0\fR if the package lists were searched successfully, even if no matching packages were found.
+Other possible exit statuses are:
+.TP
+.B 72
+Missing or invalid package meta-data.
+.TP
+.B 78
+Missing or invalid configuration file.
+.SH ENVIRONMENT
+.TP
+.B PKGTOOLS_EXTRAS_CONF
+Overrides the default configuration file location to be used.
+.SH FILES
+.TP
+.I /etc/pkgtools\-extras.conf
+Default configuration file.
+For proper operation of
+.BR findpkg (8),
+\fBWORKDIR\fR, \fBPKGTOOLS_INSTALLED_PKGS_DIR\fR, and \fBMIRRORS\fR must be set appropriately.
+See
+.BR pkgtools\-extras.conf (5)
+for details.
+.SH BUGS
+There is no locking of the files in the working directory.
+As a result, running
+.BR findpkg (8)
+could be interferred with by running
+.BR updatepkglists (8)
+at the same time.
+Also, if using the same working directory as
+.BR slackpkg (8),
+using these tools at the same time could result in unintended behavior.
+.SH EXAMPLES
+To find all currently available or installed kernel packages:
+.PP
+.nf
+.RS 5
+.B findpkg kernel
+.RE
+.fi
+.PP
+To find only kernel\-generic packages available upstream in the testing sub-repository, and include the download link:
+.PP
+.nf
+.RS 5
+.B findpkg \-\-repo testing \-\-status available --link kernel\-generic
+.RE
+.fi
+.PP
+To get more detailed information about the currently installed slackpkg package:
+.PP
+.nf
+.RS 5
+.B findpkg \-\-status installed \-\-info slackpkg
+.RE
+.fi
+.SH AUTHORS
+.R Jonathan L. Kaus <jlkaus@gmail.com>
+.SH SEE ALSO
+.BR fetchpkg (8),
+.BR updatepkglists (8),
+.BR pkgtools\-extras.conf (5).

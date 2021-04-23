@@ -1,0 +1,100 @@
+.TH UPDATEPKGLISTS 8 "2021-04-22" "pkgtools-extras 0.8.0"
+.SH NAME
+updatepkglists \- Update package meta-data for remote Slackware package repositories.
+.SH SYNOPSIS
+.B updatepkglists
+[\fB\-\-gpg\fR]
+.SH DESCRIPTION
+.B updatepkglists
+creates or updates the package lists used by
+.BR findpkg (8)
+and
+.BR fetchpkg (8)
+to find and download packages from remote package repositories.
+.PP
+It uses a similar meta-data format for the package list files as the
+.BR slackpkg (8)
+suite, so is not entirely necessary if
+.BR pkgtools\-extras.conf (5)
+is configured to point to
+.BR slackpkg (8)'s
+working directory.
+.SH OPTIONS
+.TP
+.BR \-\-gpg
+Instead of downloading the remote package repository package lists and updating the local meta-data,
+if \fB\-\-gpg\fR is specified, only the remote repository's GPG public key files are downloaded, and added to the local GPG keyring.
+This does not occur normally, and must be explicitely requested using \fB\-\-gpg\fR if a new repository is added,
+or there is legitimate reason to believe the public keys have changed.
+.SH EXIT STATUS
+The exit status is \fB0\fR if all meta-data files were downloaded and verified successfully.
+Other possible exit statuses are:
+.TP
+.B 1
+Some meta-data files for configured repositories could not be downloaded, or verification failed.
+.TP
+.B 64
+An unknown parameter was specified.
+.TP
+.B 73
+Unable to create temporary directory.
+.TP
+.B 78
+Missing or invalid configuration file.
+.SH ENVIRONMENT
+.TP
+.B PKGTOOLS_EXTRAS_CONF
+Overrides the default configuration file location to be used.
+.SH FILES
+.TP
+.I /etc/pkgtools\-extras.conf
+Default configuration file.
+For proper operation of
+.BR updatepkglists (8),
+\fBWORKDIR\fR and \fBMIRRORS\fR must be set appropriately.
+See
+.BR pkgtools\-extras.conf (5)
+for details.
+.SH BUGS
+There is no locking of the files in the working directory.
+As a result, multiple instances could interfere with each other.
+Also, if using the same working directory or cache directory as
+.BR slackpkg (8),
+using these tools at the same time could result in unintended behavior.
+.PP
+Furthermore, while every attempt was made to use the same meta-data format as
+.BR slackpkg (8),
+using
+.BR updatepkglists (8)
+to update the metadata on behalf of
+.BR slackpkg (8)
+is not supported and probably not a good idea.
+Either specify a different \fBWORKDIR\fR in
+.BR pkgtools\-extras.conf (5)
+or do not use
+.BR updatepkglists (8)
+at all (use
+.BR slackpkg "(8) " update
+instead).
+.SH EXAMPLES
+To update the gpg public keys for the remote repositories:
+.PP
+.nf
+.RS 5
+.B updatepkglists \-\-gpg
+.RE
+.fi
+.PP
+To update remote package repository meta-data files:
+.PP
+.nf
+.RS 5
+.B updatepkglists
+.RE
+.fi
+.SH AUTHORS
+.R Jonathan L. Kaus <jlkaus@gmail.com>
+.SH SEE ALSO
+.BR findpkg (8),
+.BR fetchpkg (8),
+.BR pkgtools-extras.conf (5).

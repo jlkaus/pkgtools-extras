@@ -1,11 +1,11 @@
-.TH FETCHPKG 8 "2021-04-20" "pkgtools-extras 0.1.0"
+.TH FETCHPKG 8 "2021-04-22" "pkgtools-extras 0.8.0"
 .SH NAME
 fetchpkg \- Simplify downloading of a remote Slackware package.
 .SH SYNOPSIS
 .B fetchpkg
 [\fB\-\-force\fR]
 [\fB\-\-no\-verify\fR]
-[\fB\-\-cache\fR | \fB\-\-dir\fR \fITARGET\fI]
+[\fB\-\-cache\fR | \fB\-\-dir\fR \fITARGET\fR]
 [\fB\-\-skip\-missing\fR]
 .IR PACKAGES ...
 .SH DESCRIPTION
@@ -25,19 +25,19 @@ can be a list of packages to download, but must be the full name, including vers
 Remote URL, remote path, and package extension should not be included.
 .SH OPTIONS
 .TP
-.BR \-\-force
+.B \-\-force
 By default, if the package file already exists at the intended download target location,
 the package is not re-downloaded.
 If \fB\-\-force\fR is specified, it is re-downloaded, re-verified, and replaces the old file,
 assuming the download works and the verification succeeds.
 .TP
-.BR \-\-no\-verify
+.B \-\-no\-verify
 By default, the MD5 sum of each downloaded package is checked against the most recent metadata,
 and the package signature is verified against the locally installed gpg key for the source repository.
 If \fB\-\-no\-verify\fR is specified, none of these checks occur.
 Use at your own risk!
 .TP
-.BR \-\-cache
+.B \-\-cache
 By default, the package is downloaded to the current working directory.
 If \fB\-\-cache\fR is specified, and \fBCACHEDIR\fR is defined in the
 .BR pkgtools\-extras.conf (5)
@@ -75,19 +75,19 @@ Missing or invalid configuration file.
 Overrides the default configuration file location to be used.
 .SH FILES
 .TP
-.I /etc/pkgtools-extras.conf
+.I /etc/pkgtools\-extras.conf
 Default configuration file.
 For proper operation of
 .BR fetchpkg (8),
 \fBWORKDIR\fR and \fBMIRRORS\fR must be set appropriately.
 Additionally, if \fB\-\-cache\fR is used, \fBCACHEDIR\fR must also be set appropriately.
 See
-.BR pkgtools-extras.conf (5)
+.BR pkgtools\-extras.conf (5)
 for details.
 .SH BUGS
-There is no locking of the files in the working directory, or the cache
-directory.  As a result, multiple instances could interfere with each
-other.  Also, if using the same working directory or cache directory as
+There is no locking of the files in the working directory, or the cache directory.
+As a result, multiple instances could interfere with each other.
+Also, if using the same working directory or cache directory as
 .BR slackpkg (8),
 using these tools at the same time could result in unintended behavior.
 .SH EXAMPLES
@@ -111,4 +111,4 @@ To fetch a package to the local package cache, without verification, and replace
 .SH SEE ALSO
 .BR findpkg (8),
 .BR updatepkglists (8),
-.BR pkgtools-extras.conf (5).
+.BR pkgtools\-extras.conf (5).
