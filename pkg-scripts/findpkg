@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 function cleanup() {
     if [ -n "$TMPDIR" ]; then
 	rm -rf $TMPDIR
@@ -33,9 +32,12 @@ declare -A MIRRORS
 . ${PKGTOOLS_EXTRAS_CONF}
 
 # Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
-# If WORKDIR is not set, terminate.
+# If WORKDIR or PKGTOOLS_INSTALLED_PKGS_DIR are not set, terminate.
 if [ -z "$WORKDIR" ]; then
     abort_clean 78 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
+fi
+if [ -z "$PKGTOOLS_INSTALLED_PKGS_DIR" ] || ! [ -e $PKGTOOLS_INSTALLED_PKGS_DIR -a -d $PKGTOOLS_INSTALLED_PKGS_DIR ]; then
+    abort_clean 78 "PKGTOOLS_INSTALLED_PKGS_DIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file, and must exist and be a directory.  Aborting."
 fi
 
 if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
@@ -140,7 +142,7 @@ done
 
 MATCHING_PKGS=$(
     ( cat ${WORKDIR}/pkglist;
-      find /var/lib/pkgtools/packages/ -printf '%P\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,"ver","arch","build",$2,"path","ext"}'
+      find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -printf '%P\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,"ver","arch","build",$2,"path","ext"}'
     ) | awk "\$2~/$PATTERN/ { print \$6 }" |sort |uniq
 	     )
 
@@ -148,7 +150,7 @@ for x in ${MATCHING_PKGS}; do
     PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { print \$1,\$7,\$6,\$8; exit }" ) )
     AREPO=${PKG_DATA[0]}
     ISTATE=avail
-    if [ -e "/var/lib/pkgtools/packages/${x}" ]; then
+    if [ -e "${PKGTOOLS_INSTALLED_PKGS_DIR}/${x}" ]; then
 	ISTATE=inst
     fi
     if [ -z "$AREPO" ]; then
@@ -180,7 +182,7 @@ for x in ${MATCHING_PKGS}; do
 		    # {exit}
 		    echo "STATUS: Installed"
 		    echo "PACKAGE_DESCRIPTION:"
-		    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' /var/lib/pkgtools/packages/${x}
+		    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' ${PKGTOOLS_INSTALLED_PKGS_DIR}/${x}
 		    echo
 		    
 		else

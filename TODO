@@ -14,5 +14,7 @@ package building:
    pkg-scripts being available).
 
 man-pages:
-1. Rough in man pages for the pkg-script tools
-2. Rough in man pages for the kernel-script tools
+1. create man page for findpkg
+2. create man page for updatepkglists
+3. create man page for kernel-script tools
+
