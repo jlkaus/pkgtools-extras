@@ -70,20 +70,20 @@ REPO_LIST="__unknown__ __available__"
 PATTERN=
 while [ -n "$1" ]; do
     case $1 in
-	--info)
+	--info|-i)
 	    SHOW_INFO=1
 	    shift
 	    ;;
-	--link)
+	--link|-l)
 	    SHOW_LINK=1
 	    shift
 	    ;;
-	--status)
+	--status|-s|--stat|--statuses)
 	    STATUS_LIST=${2//,/ }
 	    shift
 	    shift
 	    ;;
-	--repo)
+	--repo|-r|--repositories|--repos)
 	    REPO_LIST=${2//,/ }
 	    shift
 	    shift

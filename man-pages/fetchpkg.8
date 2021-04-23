@@ -3,10 +3,10 @@
 fetchpkg \- Simplify downloading of a remote Slackware package.
 .SH SYNOPSIS
 .B fetchpkg
-[\fB\-\-force\fR]
-[\fB\-\-no\-verify\fR]
-[\fB\-\-cache\fR | \fB\-\-dir\fR \fITARGET\fR]
-[\fB\-\-skip\-missing\fR]
+[\fB\-f\fR, \fB\-\-force\fR]
+[\fB\-n\fR, \fB\-\-no\-verify\fR]
+[\fB\-c\fR, \fB\-\-cache\fR | \fB\-d\fR, \fB\-\-dir\fR \fITARGET\fR]
+[\fB\-s\fR, \fB\-\-skip\-missing\fR]
 .IR PACKAGES ...
 .SH DESCRIPTION
 .B fetchpkg
@@ -25,31 +25,31 @@ can be a list of packages to download, but must be the full name, including vers
 Remote URL, remote path, and package extension should not be included.
 .SH OPTIONS
 .TP
-.B \-\-force
+.BR \-f ", " \-\-force
 By default, if the package file already exists at the intended download target location,
 the package is not re-downloaded.
 If \fB\-\-force\fR is specified, it is re-downloaded, re-verified, and replaces the old file,
 assuming the download works and the verification succeeds.
 .TP
-.B \-\-no\-verify
+.BR \-n ", " \-\-no\-verify
 By default, the MD5 sum of each downloaded package is checked against the most recent metadata,
 and the package signature is verified against the locally installed gpg key for the source repository.
 If \fB\-\-no\-verify\fR is specified, none of these checks occur.
 Use at your own risk!
 .TP
-.B \-\-cache
+.BR \-c ", " \-\-cache
 By default, the package is downloaded to the current working directory.
 If \fB\-\-cache\fR is specified, and \fBCACHEDIR\fR is defined in the
 .BR pkgtools\-extras.conf (5)
 config file, the file will be downloaded to the cache instead.
 Cannot be used with \fB\-\-dir\fR.
 .TP
-.B \-\-dir \fITARGET\fR
+.BR \-d ", " \-\-dir " " \fITARGET\fR
 By default, the package is downloaded to the current working directory.
 If \fB\-\-dir\fR is specified, the package is instead downloaded to the \fITARGET\fR directory.
 Cannot be used with \fB\-\-cache\fR.
 .TP
-.B \-\-skip\-missing
+.BR \-s ", " \-\-skip\-missing
 By default, if a given package cannot be located at any remote repository, \fBfetchpkg\fR will exit immediately, with an error
 (and not proceed with downloading additional packages).
 If \fB\-\-skip\-missing\fR is specified, a warning will be emitted, but the remaining packages will still be downloaded, without a bad exit status.

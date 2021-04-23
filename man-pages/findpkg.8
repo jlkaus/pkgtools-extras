@@ -3,10 +3,10 @@
 findpkg \- Simplify finding available Slackware packages from remote repositories.
 .SH SYNOPSIS
 .B findpkg
-[\fB\-\-info\fR]
-[\fB\-\-link\fR]
-[\fB\-\-status\fR \fISTATUSLIST\fR]
-[\fB\-\-repo\fR \fIREPOLIST\fR]
+[\fB\-i\fR, \fB\-\-info\fR]
+[\fB\-l\fR, \fB\-\-link\fR]
+[\fB\-s\fR, \fB\-\-status\fR \fISTATUSLIST\fR]
+[\fB\-r\fR, \fB\-\-repo\fR \fIREPOLIST\fR]
 .IR PATTERNS ...
 .SH DESCRIPTION
 .B findpkg
@@ -22,18 +22,18 @@ can be a list of search patterns to look for.
 Only the package name is checked for matches.
 .SH OPTIONS
 .TP
-.B \-\-info
+.BR \-i ", " \-\-info
 By default, only a single line of concise information is returned for each package found,
 including installation status, source repository, remote path, and the detailed package name and version.
 If \fB\-\-info\fR is specified, for each package found, the full slack-desc for the package is displayed,
 in addition to the concise package information normally displayed, and a full download URI for the package.
 .TP
-.B \-\-link
+.BR \-l ", " \-\-link
 By default, a download link for the package is only included with \-\-info, and not the concise results.
 If \fB\-\-link\fR is specified, the concise results include the download URI for the package as well.
 Using \fB\-\-link\fR with \fB\-\-info\fR acts the same as just using \fB\-\-info\fR.
 .TP
-.B \-\-status \fISTATUSLIST\fR
+.BR \-s ", " \-\-status " " \fISTATUSLIST\fR
 By default, packages that are actually installed, as well as those available in a remote repository, are included in the results.
 If \fB\-\-status\fR is specified, the resulting packages are filtered to only include packages with an installation status in the given comma-separated \fISTATUSLIST\fR.
 The available status keywords are:
@@ -44,7 +44,7 @@ The available status keywords are:
 .BR available " (or " avail ", " a ", " A ")"
 .in
 .TP
-.B \-\-repo \fIREPOLIST\fR
+.BR \-r ", " \-\-repo " " \fIREPOLIST\fR
 By default, packages from any configured remote repository, as well as those only installed locally (that is, not available in any remote repository), are all included in the results.
 If \fB\-\-repo\fR is specified, the resulting packages are filtered to only include packages available from a repository in the given comma-separated \fIREPOLIST\fR.
 The repository names must match the key to the \fBMIRRORS\fR array in the

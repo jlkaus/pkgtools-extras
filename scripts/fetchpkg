@@ -68,15 +68,15 @@ USE_CACHE=
 
 while [ -n "$1" ]; do
     case $1 in
-	--no-verify)
+	--no-verify|-n)
 	    DO_VERIFY=
 	    shift
 	    ;;
-	--force)
+	--force|-f)
 	    FORCE_DOWNLOAD=1
 	    shift
 	    ;;
-	--cache)
+	--cache|-c)
 	    USE_CACHE=1
 	    shift
 
@@ -84,12 +84,12 @@ while [ -n "$1" ]; do
 		abort_clean 78 "CACHEDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file when using --cache.  Aborting."
 	    fi
 	    ;;
-	--dir)
+	--dir|-d)
 	    shift
 	    TARGET_DIR=$1
 	    shift
 	    ;;
-	--skip-missing)
+	--skip-missing|-s)
 	    SKIP_MISSING=1
 	    shift
 	    ;;
