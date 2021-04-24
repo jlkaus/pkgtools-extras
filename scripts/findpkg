@@ -143,7 +143,7 @@ done
 MATCHING_PKGS=$(
     ( cat ${WORKDIR}/pkglist;
       find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -printf '%P\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,"ver","arch","build",$2,"path","ext"}'
-    ) | awk "\$2~/$PATTERN/ { print \$6 }" |sort |uniq
+    ) | awk "\$2~/$TRUE_PATTERN/ { print \$6 }" |sort |uniq
 	     )
 
 for x in ${MATCHING_PKGS}; do
