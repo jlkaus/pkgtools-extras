@@ -1,6 +1,6 @@
 #!/bin/bash
 
-
+TMPDIR=
 function cleanup() {
     if [ -n "$TMPDIR" ]; then
 	rm -rf $TMPDIR

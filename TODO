@@ -1,9 +1,4 @@
 scripts:
-1. check-kernels should show the currently installed and used kernels.
-   Actually query the lilo.conf and elilo.conf files.
-   Use md5sum comparisons on the files with tagged names in /boot and /boot/efi/EFI/Slackware/ to identify configured kernels.
-   Add options to remove kernels that aren't being used.
-   Add options to install newly available kernels (using findpkg and fetchpkg)
 2. Make set-boot-kernel work.
    Optionally generate an initrd if it doesn't exist for a kernel that is being configured and needs it (generic kernels)
    For lilo, update /boot links using the tag names and run lilo
@@ -12,5 +7,7 @@ scripts:
 man-pages:
 3. create man page for check-kernels
 4. create man page for set-boot-kernel
+5. create man page for remove-unused-kernels
+6. create man page for install-available-kernels
 
 
