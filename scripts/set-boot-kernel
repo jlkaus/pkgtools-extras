@@ -1,166 +1,251 @@
-#!/usr/bin/perl
+#!/bin/bash
 
-use strict;
-use warnings;
+PKG_LIST_LOC=/var/lib/pkgtools/packages
 
-use Getopt::Long;
-use FindBin;
-
-our $TOOLDIR = $FindBin::Bin;
-our $BOOT_LOC = "/boot";
-our $EFI_LOC = "${BOOT_LOC}/efi/EFI/Slackware";
-
-my $analyze = undef;
-my $lilo = undef;
-my $elilo = undef;
-my $set_new = undef;
-my $set_old = undef;
-my $clear_new = undef;
-my $clear_old = undef;
-
-if(!GetOptions('a|analyze' => \$analyze,
-	       'l|lilo' => \$lilo,
-	       'e|elilo' => \$elilo,
-	       'n|set-new=s' => \$set_new,
-	       'o|set-old=s' => \$set_old,
-	       'clear-new' => \$clear_new,
-	       'clear-old' => \$clear_old)) {
-    print STDERR "Usage: set-boot-kernel [[-a|--analyze]] [-n VERSION|--set-new VERSION|--clear-new] [-o VERSION|--set-old VERSION|--clear-old] [[-e|--elilo]|-l|--lilo]\n";
-    exit(64); # EX_USAGE
+TMPDIR=
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
 }
 
-if(defined $set_new && defined $clear_new) {
-    print STDERR "Only one of --set-new or --clear-new is allowed.\n";
-    exit(64); # EX_USAGE
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
 }
 
-if(defined $set_old && defined $clear_old) {
-    print STDERR "Only one of --set-old or --clear-old is allowed.\n";
-    exit(64); # EX_USAGE
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
 }
 
-if(defined $lilo && defined $elilo) {
-    print STDERR "Only one of --lilo or --elilo is allowed.\n";
-    exit(64); # EX_USAGE
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
 }
 
-if(!defined $lilo) {
-    $elilo = 1;
-}
+trap 'cleanup' 2 14 15
+set -e
 
-if(!defined $set_new && !defined $set_old && !defined $clear_new && !defined $clear_old) {
-    $analyze = 1;
-}
+# The tool now uses check-kernels --boot-config to get details about lilo/elilo config data.
+# For a given allowed tag that is configured, that will give information about where to copy/link the
+# desired kernel and initrd files.
+# Use the actual package database to determine the installed kernel versions
+# Still will need to create initrd if necessary.
+# Allow any configured valid tags, not restricted to old/new/etc.
 
-# default just displays current kernels running, installed, configured, etc.
-# option to set the old kernel to a particular version (must be installed)
-# option to set the new kernel to a particular version (must be installed)
-# option to clear the old kernel
-# option to clear the new kernel
-# builds initrd when required.
+# options now:
+# --list    Just list the current boot configs _that we can manipulate_! Show tags, labels, initrd status, default status, and current kernel package used.
+# --no-lilo       If a given tag we're changing is in lilo.conf, lilo is re-run after changes, normally, but this causes it not to be run.
+# --set TAG=SIZE-VERSION    For the config of TAG (if configured, or complain), copy in the SIZE-VERSION kernel (if installed, or complain) to the appropriate place, and initrd too, created if needed.
+# --clear TAG               For the config of TAG (if configured, or complain), remove the current kernel.  This will cause that TAG to no longer validly boot.
+# Can specify several --set and/or --clear options in a single invocation.
 
-# Does not download new kernels, or check for new kernels to download
-# Does not installpkg any kernels
-# Does not removepkg any kernels
+SHOW_LIST=
+NO_LILO=
+CHANGES=
+DRY_RUN=
 
-# Assumes /etc/mkinitrd.conf is correct.
-# Assumes elilo.conf is correct, and uses the vmlinuz, vmlinuz-huge, vmlinuz-old, vmlinuz-old-huge naming convention
-# Assumes the efi slackware boot location is /boot/efi/EFI/Slackware/
+while [ -n "$1" ]; do
+    case $1 in
+	--list|-l)
+	    SHOW_LIST=1
+	    shift
+	    ;;
+	--no-lilo)
+	    NO_LILO=1
+	    shift
+	    ;;
+	--clear|-c)
+	    shift
+	    CHANGES="$CHANGES $1="
+	    shift
+	    ;;
+	--set|-s)
+	    shift
+	    CHANGES="$CHANGES $1"
+	    shift
+	    ;;
+	--dry-run|-d)
+	    DRY_RUN=1
+	    shift
+	    ;;
+	*)
+	    abort_clean 64 "Unknown parameter $1"
+	    ;;
+    esac
+done
 
-# By default when setting a kernel to old or new, sets both the huge and generic
-# ones.  If a huge or generic version isn't available, doesn't set that one (and
-# removes the file altogether)
-# Does not update elilo.conf if one or the other isn't available.
+if [ -z "$CHANGES" ]; then
+    SHOW_LIST=1
+fi
 
-# If the desired kernel version isn't found, doesn't actually update anything,
-# and errors out.
+# Read in the current lilo/elilo configuration
+BOOT_CONFIGS=$(check-kernels --boot-configs)
 
-# If asking to clear the new kernel, warns on exit that you may be able to boot.
+# Translate the configs into a map keyed by just valid tags.
+# If desired, show the current valid configs
+if [ -n "$SHOW_LIST" ]; then
+    echo "Current boot configuration:"
+fi
+declare -A BC_IMAGE
+declare -A BC_INITRD
+declare -A BC_TOOL
+while read -r tag vers image package initrd initrd_status tool dflt label ; do
+    if [ "$tag" != "__invalid_tag__" ]; then
+	if [ -n "$SHOW_LIST" ]; then
+	    # Show tags, labels, initrd status, default status, and current kernel package used.
+	    if [ "$dflt" = "__default__" ]; then
+		simple_default=",default"
+	    fi
+	    simple_initrd_status=${initrd_status//__/}
+	    simple_initrd_status=${simple_initrd_status//_/-}
+	    echo "  $tag=$package \"$label\" ($simple_initrd_status$simple_default)"
+	    echo "    image=$image"
+	    if [ "$initrd" != "__none__" ]; then
+		echo "    initrd=$initrd"
+	    fi
+	fi
+	if [ -n "${BC_IMAGE[$tag]}" ]; then
+	    abort_clean 78 "Duplicate boot configuration tag [$tag]"
+	fi
+	BC_IMAGE[$tag]=$image
+	BC_INITRD[$tag]=$initrd
+	BC_TOOL[$tag]=$tool
+    fi
+done <<< "$BOOT_CONFIGS";
 
-# Some sort of lilo option?  No EFI in that case.  Assumes lilo.conf is correct and references the correct names (as above).  Re-runs lilo after changes are made.
 
+RERUN_LILO=
+CHANGES_VALIDATED=1
 
-my @klines = $lilo ? `$TOOLDIR/check-kernels lilo` : `$TOOLDIR/check-kernels elilo`;
-my %kdata = ();
-foreach(@klines){
-    chomp;
-    my ($k,$v) = split /:\s*/;
-#    print "$k=$v\n";
-    my @vals = split /\s+/, $v;
-    $kdata{$k} = [@vals];
-}
+# If anything is set in the changes list, validate that the tags each exist and are modifyable, and verify the target is either empty, or refers to a valid installed kernel package.
+# If everything validated OK about the changes list, go through each entry and apply the changes in turn.  For each kernel, determine if initrd needs to be built for it, and if lilo needs to be run after everything is done.
+if [ -n "$CHANGES" ]; then
+    echo
+    echo "Validating requested changes ..."
+    echo
 
-my $rkd = {};
-foreach(keys %kdata) {
-    if(/^Running$/) {
-	foreach(@{$kdata{$_}}) {
-	    $rkd->{$_} = {} if !defined $rkd->{$_};
-	    $rkd->{$_}->{Running} = 1;
-	}
-    } elsif(/^Installed-(.*)$/) {
-	foreach(@{$kdata{$_}}) {
-	    $rkd->{$_} = {} if !defined $rkd->{$_};
-	    $rkd->{$_}->{$1} = 1;
-	}
-    } elsif(/^Configured-(.*)$/) {
-	foreach(@{$kdata{$_}}) {
-	    $rkd->{$_} = {} if !defined $rkd->{$_};
-	    $rkd->{$_}->{$1} = 1;
-	}
-    }
-}
+    for x in $CHANGES; do
+	VALS=( ${x//=/ } )
+	tag=${VALS[0]}
+	target=${VALS[1]}
+	if [ -z "${BC_TOOL[$tag]}" ]; then
+	    warn_msg "Tag [$tag] not found as valid tag in lilo.conf or elilo.conf"
+	    CHANGES_VALIDATED=
+	else
+	    if [ "${BC_TOOL[$tag]}" = "__lilo__" ]; then
+		RERUN_LILO=1
+	    fi
+	    if [ -n "$target" ]; then
+		size=${target##kernel-}
+		size=${size%%-*}
+		vers=${target##kernel-${size}-}
+		vers=${vers%%-*}
+		excess=${target##kernel-${size}-${vers}-}
+		if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
+		    warn_msg "Target for tag $tag: [$target] (${size}-${vers}) is not a currently installed kernel package."
+		    CHANGES_VALIDATED=
+		elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
+		    warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
+		    CHANGES_VALIDATED=
+		elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
+		    warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
+		    CHANGES_VALIDATED=
+		else		
+		    :
+		fi
+	    else
+		:
+	    fi
+	fi
+    done
 
-if($analyze) {
-    # Display current state, as retreived above.
-    print("Current configuration:\n");
+    if [ -n "$CHANGES_VALIDATED" ]; then
+	for x in $CHANGES; do
+	    echo "Executing change [$x]:"
+	    VALS=( ${x//=/ } )
+	    tag=${VALS[0]}
+	    target=${VALS[1]}
+	    if [ -z "$target" ]; then
+		echo "  Removing kernel image ${BC_IMAGE[$tag]} ..."
+		if [ -z "$DRY_RUN" ]; then
+		    rm -f ${BC_IMAGE[$tag]}
+		else
+		    echo "    # rm -f ${BC_IMAGE[$tag]}"
+		fi
+		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		    echo "  Removing initrd image ${BC_INITRD[$tag]} ..."
+		    if [ -z "$DRY_RUN" ]; then
+			rm -f ${BC_INITRD[$tag]}
+		    else
+			echo "    # rm -f ${BC_INITRD[$tag]}"
+		    fi
+		fi
+		warn_msg "Kernel tagged [$tag] was removed!  If this is a default boot config, please set it to something before rebooting!"
+	    else
+		size=${target##kernel-}
+		size=${size%%-*}
+		vers=${target##kernel-${size}-}
+		vers=${vers%%-*}
+		excess=${target##kernel-${size}-${vers}-}
 
-    # Also, determine if there are any installed kernels that are no longer used
-    # And determine if we have generic kernels installed that don't have modules installed too.
-    # Also, if neither a generic or huge kernel is configured as the "new" kernel, put out a warning.
-    
-}
+		tgt_image=/boot/vmlinuz-${size}-${vers}
+		tgt_initrd=/boot/initrd-${size}-${vers}.gz
 
-if($set_new) {
-    print("Setting new kernel to $set_new\n");
-    # if generic && modules is installed:
-    #   run mkinitrd
-    #   link new generic to $boot/vmlinuz, etc.
-    #   cp new generic to $efi/vmlinuz, etc.
-    # if huge is installed:
-    #   link new huge to $boot/vmlinuz-huge, etc.
-    #   cp new huge to $efi/vmlinuz-huge, etc.
-    # If neither is installed:
-    #   error out
-    
-} elsif($clear_new) {
-    print("Clearing new kernel\n");
-    # If they exist:
-    # Remove $boot/vmlinuz link, etc
-    # Remove $efi/vmlinuz, etc
-    # Remove $boot/vmlinuz-huge link, etc.
-    # Remove $efi/vmlinuz-huge, etc.
-    # Warn on exit
-}
+		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		    echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
+		    if [ -z "$DRY_RUN" ];then
+			mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
+		    else
+			echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
+		    fi
+		fi
 
-if($set_old) {
-    print("Setting old kernel to $set_old\n");
-    # if generic && modules is installed:
-    #   run mkinitrd
-    #   link old generic to $boot/vmlinuz-old, etc.
-    #   cp old generic to $efi/vmlinuz-old, etc.
-    # if huge is installed:
-    #   link old huge to $boot/vmlinuz-old-huge, etc.
-    #   cp old huge to $efi/vmlinuz-old-huge, etc.
-    # if neither is installed:
-    #   Error out
+		echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
+		if [ -z "$DRY_RUN" ]; then
+		    cp -a $tgt_image ${BC_IMAGE[$tag]}
+		else
+		    echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
+		fi
 
-} elsif($clear_old) {
-    print("Clearing old kernel\n");
-    # If they exist:
-    # Remove $boot/vmlinuz-old link, etc
-    # Remove $efi/vmlinuz-old, etc
-    # Remove $boot/vmlinuz-old-huge link, etc.
-    # Remove $efi/vmlinuz-old-huge, etc.
-}
+		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		    echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
+		    if [ -z "$DRY_RUN" ]; then
+			cp -a $tgt_initrd ${BC_INITRD[$tag]}
+		    else
+			echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+		    fi
+		fi
+	    fi
+	    echo
+	done
 
-exit(0);
+	if [ -n "$RERUN_LILO" ]; then
+	    if [ -z "$NO_LILO" ]; then
+		echo "Running lilo ..."
+		if [ -z "$DRY_RUN" ]; then
+		    lilo
+		else
+		    echo "  # lilo"
+		fi
+	    else
+		warn_msg "--no-lilo was specified, but a kernel controlled by lilo.conf was modified.  Please re-run 'lilo' before rebooting!"
+	    fi
+	fi
+
+	if [ -n "$DRY_RUN" ]; then
+	    echo "Dry-run complete."
+	    echo
+	else
+	    echo "Changes complete."
+	    echo
+	fi
+
+    else
+	abort_clean 1 "Invalid changes specified.  Aborting."
+    fi
+fi
+
+cleanup

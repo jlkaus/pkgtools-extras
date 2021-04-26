@@ -31,47 +31,48 @@ function parse_lilo_config {
         -e 's/[[:space:]]*$//' \
         -e '/^image|label|initrd|default|other[[:space:]]=/ p' ${1} \
 	|awk -e "BEGINFILE {\
-	          is_default=\"non-default\"; \
-		  } \
-		  { \
-	          split(\$0,wrk,/[[:space:]]*=[[:space:]]*/); \
-		  if(wrk[1]==\"default\") { \
-		      deflt=wrk[2]; \
-		  } \
-	       	  if((wrk[1]==\"image\" || wrk[1]==\"other\") && image_name != \"\") { \
-		      print is_default, image_name, initrd, label;\
-                      image_name=\"\";\
-                      initrd=\"__none__\";\
-                      label=\"\";\
-		      is_default=\"non-default\";\
+                     is_default=\"__non_default__\"; \
+	       	 } \
+		 { \
+		     split(\$0,wrk,/[[:space:]]*=[[:space:]]*/); \
+		     if(wrk[1]==\"default\") { \
+		     	 deflt=wrk[2]; \
+		     } \
+	       	     if((wrk[1]==\"image\" || wrk[1]==\"other\") && image_name != \"\") { \
+		         print is_default, image_name, initrd, label;\
+                         image_name=\"\";\
+                         initrd=\"__none__\";\
+                         label=\"\";\
+		         is_default=\"__non_default__\";\
+                     }\
+                     if(wrk[1]==\"image\") {\
+                         image_name=wrk[2];\
+                     }\
+                     if(wrk[1]==\"label\") {\
+                         label=wrk[2];\
+		         if(label==deflt || deflt==\"\") {\
+		             is_default=\"__default__\"; \
+			     deflt=label; \
+	                 }\
+                     }\
+                     if(wrk[1]==\"initrd\") {\
+                         initrd=wrk[2];\
+                     }\
                   }\
-                  if(wrk[1]==\"image\") {\
-                      image_name=wrk[2];\
-                  }\
-                  if(wrk[1]==\"label\") {\
-                      label=wrk[2];\
-		      if(label==deflt || deflt==\"\") {\
-		          is_default=\"default\"; \
-			  deflt=label; \
-	              }\
-                  }\
-                  if(wrk[1]==\"initrd\") {\
-                      initrd=wrk[2];\
-                  }\
-               }\
-               ENDFILE {\
-                   if(image_name!=\"\") {\
-                       print is_default, image_name, initrd, label;\
-                   }\
-               }"|sed -e "s/^/$2 /;"
+                  ENDFILE {\
+                      if(image_name!=\"\") {\
+                          print is_default, image_name, initrd, label;\
+                      }\
+                  }"|sed -e "s/^/$2 /;"
     fi
 }
 
-CONFIGS=$( parse_lilo_config $LILO_CONF lilo; parse_lilo_config $ELILO_CONF elilo )
+CONFIGS=$( parse_lilo_config $LILO_CONF __lilo__; parse_lilo_config $ELILO_CONF __elilo__ )
+
 PROPER_CONFIGS=$(while read -r tool dflt image initrd label ; do
 
     if [ "${image:0:1}" != "/" ]; then
-	if [ "$tool" = "lilo" ]; then
+	if [ "$tool" = "__lilo__" ]; then
 	    image="${BOOT_LOC}/${image}"
 	else
 	    image="${EFI_LOC}/${image}"
@@ -79,7 +80,7 @@ PROPER_CONFIGS=$(while read -r tool dflt image initrd label ; do
     fi
 
     if [ "${initrd}" != "__none__" -a "${initrd:0:1}" != "/" ]; then
-	if [ "$tool" = "lilo" ]; then
+	if [ "$tool" = "__lilo__" ]; then
 	    initrd="${BOOT_LOC}/${initrd}"
 	else
 	    initrd="${EFI_LOC}/${initrd}"
@@ -179,7 +180,7 @@ PROPER_CONFIGS=$(while read -r tool dflt image initrd label ; do
     fi
     
 #    echo "$tool $real_tag $dflt $image $initrd $found_initrd $vers $found_pkg $label"
-    echo "$real_tag $vers $image $found_pkg $initrd $found_initrd $tool $dftl $label"
+    echo "$real_tag $vers $image $found_pkg $initrd $found_initrd $tool $dflt $label"
     
 done <<< "$CONFIGS")
 
