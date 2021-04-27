@@ -47,7 +47,7 @@ if [ $? -ne 0 ]; then
     abort_clean 73 "Unable to create a temporary directory ($?)."
 fi
 
-trap 'cleanup' 2 14 15
+trap 'cleanup' 2 14 15 EXIT
 
 # Options:
 #   --force: Download it again, replacing what might already be in place.

@@ -27,7 +27,7 @@ if [ $? -ne 0 ]; then
     abort_clean 73 "Unable to create a temporary directory ($?)."
 fi
 
-trap 'cleanup' 2 14 15
+trap 'cleanup' 2 14 15 EXIT
 
 # Options for:
 #  repo selection.  Default to just slackware,slackware64.  --testing adds testing.

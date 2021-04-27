@@ -37,6 +37,7 @@ set -e
 
 # options now:
 # --list    Just list the current boot configs _that we can manipulate_! Show tags, labels, initrd status, default status, and current kernel package used.
+# --skip-initrd   Even if currently using an initrd, don't rebuild or replace the initrd image.  Use at your own risk!
 # --no-lilo       If a given tag we're changing is in lilo.conf, lilo is re-run after changes, normally, but this causes it not to be run.
 # --set TAG=SIZE-VERSION    For the config of TAG (if configured, or complain), copy in the SIZE-VERSION kernel (if installed, or complain) to the appropriate place, and initrd too, created if needed.
 # --clear TAG               For the config of TAG (if configured, or complain), remove the current kernel.  This will cause that TAG to no longer validly boot.
@@ -46,6 +47,7 @@ SHOW_LIST=
 NO_LILO=
 CHANGES=
 DRY_RUN=
+SKIP_INITRD=
 
 while [ -n "$1" ]; do
     case $1 in
@@ -55,6 +57,10 @@ while [ -n "$1" ]; do
 	    ;;
 	--no-lilo)
 	    NO_LILO=1
+	    shift
+	    ;;
+	--skip-initrd)
+	    SKIP_INITRD=1
 	    shift
 	    ;;
 	--clear|-c)
@@ -176,11 +182,15 @@ if [ -n "$CHANGES" ]; then
 		    echo "    # rm -f ${BC_IMAGE[$tag]}"
 		fi
 		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		    echo "  Removing initrd image ${BC_INITRD[$tag]} ..."
-		    if [ -z "$DRY_RUN" ]; then
-			rm -f ${BC_INITRD[$tag]}
+		    if [ -z "$SKIP_INITRD" ]; then
+			echo "  Removing initrd image ${BC_INITRD[$tag]} ..."
+			if [ -z "$DRY_RUN" ]; then
+			    rm -f ${BC_INITRD[$tag]}
+			else
+			    echo "    # rm -f ${BC_INITRD[$tag]}"
+			fi
 		    else
-			echo "    # rm -f ${BC_INITRD[$tag]}"
+			echo "  Skipping removal of initrd image ${BC_INITRD[$tag]}."
 		    fi
 		fi
 		warn_msg "Kernel tagged [$tag] was removed!  If this is a default boot config, please set it to something before rebooting!"
@@ -195,11 +205,15 @@ if [ -n "$CHANGES" ]; then
 		tgt_initrd=/boot/initrd-${size}-${vers}.gz
 
 		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		    echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
-		    if [ -z "$DRY_RUN" ];then
-			mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
+		    if [ -z "$SKIP_INITRD" ]; then
+			echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
+			if [ -z "$DRY_RUN" ];then
+			    mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
+			else
+			    echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
+			fi
 		    else
-			echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
+			warn_msg "Skipping creation of new initrd [$tgt_initrd] for kernel ${vers}!  You almost certainly will need to do this manually!"
 		    fi
 		fi
 
@@ -211,11 +225,15 @@ if [ -n "$CHANGES" ]; then
 		fi
 
 		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		    echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
-		    if [ -z "$DRY_RUN" ]; then
-			cp -a $tgt_initrd ${BC_INITRD[$tag]}
+		    if [ -z "$SKIP_INITRD" ]; then
+			echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
+			if [ -z "$DRY_RUN" ]; then
+			    cp -a $tgt_initrd ${BC_INITRD[$tag]}
+			else
+			    echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+			fi
 		    else
-			echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+			warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
 		    fi
 		fi
 	    fi

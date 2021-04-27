@@ -3,7 +3,7 @@
 PKG_LIST_LOC=/var/lib/pkgtools/packages
 BOOT_LOC=/boot
 EFI_LOC=$BOOT_LOC/efi/EFI/Slackware
-LILO_CONF=/etc/lilo.conf_example
+LILO_CONF=/etc/lilo.conf
 ELILO_CONF=$EFI_LOC/elilo.conf
 
 # Default full output lines should include:
