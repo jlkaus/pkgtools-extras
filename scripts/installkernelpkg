@@ -1,0 +1,69 @@
+#!/bin/bash
+
+TMPDIR=
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
+}
+
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
+}
+
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
+}
+
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
+}
+
+trap 'cleanup' 2 14 15 EXIT
+
+
+# Helper to install/upgrade kernel packages, allowing different versions to co-exist, side-by-side.  Note that re-builds of the same package/version combination are still upgraded.  Using this for packages other than kernels is allowed, but may result in unexpected effects.
+# Options:
+#  --reinstall         By default, a package that is already installed at the exact same version/build is skipped.  This forces it to be re-installed.
+#  --install-new       By default, packages that are not locally installed at all are installed (matching upgradepkg behavior).  This instead causes packages that are not currently installed at all to be installed.
+
+# An installation failure aborts the process at that point (no further installations are attempted. Previously successful installations are not undone.)
+
+USE_REINSTALL=
+USE_INSTALL_NEW=
+PKGNAMES=
+
+while [ -n "$1" ]; do
+    case $1 in
+	--reinstall|-r)
+	    USE_REINSTALL=1
+	    shift
+	    ;;
+	--install-new)
+	    USE_INSTALL_NEW=1
+	    shift
+	    ;;
+	*)
+	    PKGNAMES="$PKGNAMES $1"
+	    shift
+	    ;;
+    esac
+done
+
+# For each package:
+#   verify the file exists
+#   Determine if the package is installed already, and if so, if the version matches, and if the build matches.
+#   If the package exists, but the version does not, install it.
+#   If the package exists, the version exists, but the build is new, install it, then remove the old build.
+#   If the package exists, the version exists, and the build matches, do nothing, unless --reinstall is specified, then install it.
+#   If the package does not exist, do nothing, unless --install-new is specified, then install it.
+# If a package file doesn't exist, or the installation fails, abort immediately.  Don't attempt to undo anything.
+
+
+
+
+cleanup

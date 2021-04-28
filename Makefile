@@ -1,4 +1,4 @@
-.PHONY: all pkgtools kerneltools install installdirs distclean clean clean-pkgtools clean-kerneltools install-pkgtools install-kerneltools dist sbo
+.PHONY: all pkgtools-extras install installdirs distclean clean dist sbo
 
 # Defined in here for my makefile use, and as a reminder.
 prefix ?= /usr/local
@@ -32,20 +32,16 @@ man8dir ?= $(mandir)/man8
 VERSION := $(file < VERSION)
 
 
-all: pkgtools kerneltools
+all: pkgtools-extras
 
-pkgtools:
-
-kerneltools:
-
-clean: clean-pkgtools clean-kerneltools
+pkgtools-extras:
 
 distclean:
 	rm -rf dist
 
 dist: dist/pkgtools-extras-$(VERSION).tar.gz
 
-dist/pkgtools-extras-$(VERSION).tar.gz:
+dist/pkgtools-extras-$(VERSION).tar.gz: VERSION
 	mkdir -p dist
 	git archive --format=tar --prefix=pkgtools-extras-$(VERSION)/ v$(VERSION) |gzip > dist/pkgtools-extras-$(VERSION).tar.gz
 
@@ -58,20 +54,13 @@ sbo: sbo/pkgtools-extras.info sbo/pkgtools-extras.SlackBuild sbo/slack-desc sbo/
 	chmod +x dist/pkgtools-extras.SlackBuild
 	sed -e 's/{VERSION}/$(VERSION)/g; s/{MD5SUM}/$(MD5SUM)/' sbo/pkgtools-extras.info > dist/pkgtools-extras.info
 
-clean-pkgtools:
+clean:
 
-clean-kerneltools:
-
-install: install-pkgtools install-kerneltools
+install: pkgtools-extras installdirs
+	install -t $(DESTDIR)$(sysconfdir) -o root -g root -m 0644 config/pkgtools-extras.conf.new
+	install -t $(DESTDIR)$(sbindir) -o root -g root -m 0755 scripts/{fetchpkg,findpkg,updatepkglists,installkernelpkg,boot-select}
+	install -t $(DESTDIR)$(man5dir) -o root -g root -m 0644 man-pages/pkgtools-extras.conf.5
+	install -t $(DESTDIR)$(man8dir) -o root -g root -m 0644 man-pages/{fetchpkg,findpkg,updatepkglists,installkernelpkg,boot-select}.8
 
 installdirs:
 	install -d -o root -g root -m 0755 $(DESTDIR)$(sbindir) $(DESTDIR)$(man5dir) $(DESTDIR)$(man8dir) $(DESTDIR)$(sysconfdir)
-
-install-pkgtools: pkgtools installdirs
-	install -t $(DESTDIR)$(sysconfdir) -o root -g root -m 0644 config/pkgtools-extras.conf.new
-	install -t $(DESTDIR)$(sbindir) -o root -g root -m 0755 scripts/{fetchpkg,findpkg,updatepkglists}
-	install -t $(DESTDIR)$(man5dir) -o root -g root -m 0644 man-pages/pkgtools-extras.conf.5
-	install -t $(DESTDIR)$(man8dir) -o root -g root -m 0644 man-pages/{fetchpkg,findpkg,updatepkglists}.8
-
-install-kerneltools: kerneltools installdirs
-

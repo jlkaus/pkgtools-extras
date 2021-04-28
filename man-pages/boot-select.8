@@ -1,0 +1,114 @@
+.TH FETCHPKG 8 "2021-04-22" "pkgtools-extras 0.8.0"
+.SH NAME
+fetchpkg \- Simplify downloading of a remote Slackware package.
+.SH SYNOPSIS
+.B fetchpkg
+[\fB\-f\fR, \fB\-\-force\fR]
+[\fB\-n\fR, \fB\-\-no\-verify\fR]
+[\fB\-c\fR, \fB\-\-cache\fR | \fB\-d\fR, \fB\-\-dir\fR \fITARGET\fR]
+[\fB\-s\fR, \fB\-\-skip\-missing\fR]
+.IR PACKAGES ...
+.SH DESCRIPTION
+.B fetchpkg
+uses the package lists maintained by
+.BR updatepkglist (8)
+or
+.BR slackpkg "(8) " update
+(including with \fBslackpkgplus\fR installed)
+to make it easier to download particular package versions from remote repositories.
+.PP
+After downloading, it verifies the packages match the expected md5 sum and is signed appropriately,
+before saving the package at the intended location.
+.PP
+.IR PACKAGES ...
+can be a list of packages to download, but must be the full name, including version, arch, and build tag.
+Remote URL, remote path, and package extension should not be included.
+.SH OPTIONS
+.TP
+.BR \-f ", " \-\-force
+By default, if the package file already exists at the intended download target location,
+the package is not re-downloaded.
+If \fB\-\-force\fR is specified, it is re-downloaded, re-verified, and replaces the old file,
+assuming the download works and the verification succeeds.
+.TP
+.BR \-n ", " \-\-no\-verify
+By default, the MD5 sum of each downloaded package is checked against the most recent metadata,
+and the package signature is verified against the locally installed gpg key for the source repository.
+If \fB\-\-no\-verify\fR is specified, none of these checks occur.
+Use at your own risk!
+.TP
+.BR \-c ", " \-\-cache
+By default, the package is downloaded to the current working directory.
+If \fB\-\-cache\fR is specified, and \fBCACHEDIR\fR is defined in the
+.BR pkgtools\-extras.conf (5)
+config file, the file will be downloaded to the cache instead.
+Cannot be used with \fB\-\-dir\fR.
+.TP
+.BR \-d ", " \-\-dir " " \fITARGET\fR
+By default, the package is downloaded to the current working directory.
+If \fB\-\-dir\fR is specified, the package is instead downloaded to the \fITARGET\fR directory.
+Cannot be used with \fB\-\-cache\fR.
+.TP
+.BR \-s ", " \-\-skip\-missing
+By default, if a given package cannot be located at any remote repository, \fBfetchpkg\fR will exit immediately, with an error
+(and not proceed with downloading additional packages).
+If \fB\-\-skip\-missing\fR is specified, a warning will be emitted, but the remaining packages will still be downloaded, without a bad exit status.
+Note that if a package is found, but unable to be downloaded, or verification fails, \fBfetchpkg\fR will still exit immediately, with an error.
+.SH EXIT STATUS
+The exit status is \fB0\fR if all packages were downloaded and verified successfully.
+Other possible exit statuses are:
+.TP
+.B 1
+Some packages were missing (and not skipped), had a download failure, or verification failure.
+.TP
+.B 72
+Missing or invalid package meta-data.
+.TP
+.B 73
+Unable to create temporary directory.
+.TP
+.B 78
+Missing or invalid configuration file.
+.SH ENVIRONMENT
+.TP
+.B PKGTOOLS_EXTRAS_CONF
+Overrides the default configuration file location to be used.
+.SH FILES
+.TP
+.I /etc/pkgtools\-extras.conf
+Default configuration file.
+For proper operation of
+.BR fetchpkg (8),
+\fBWORKDIR\fR and \fBMIRRORS\fR must be set appropriately.
+Additionally, if \fB\-\-cache\fR is used, \fBCACHEDIR\fR must also be set appropriately.
+See
+.BR pkgtools\-extras.conf (5)
+for details.
+.SH BUGS
+There is no locking of the files in the working directory, or the cache directory.
+As a result, multiple instances could interfere with each other.
+Also, if using the same working directory or cache directory as
+.BR slackpkg (8),
+using these tools at the same time could result in unintended behavior.
+.SH EXAMPLES
+To fetch a particular kernel version's generic and modules packages to the current working directory:
+.PP
+.nf
+.RS 5
+.B fetchpkg kernel\-generic\-5.10.30\-x86_64\-1 kernel\-modules\-5.10.30\-x86_64\-1
+.RE
+.fi
+.PP
+To fetch a package to the local package cache, without verification, and replace an existing package:
+.PP
+.nf
+.RS 5
+.B fetchpkg \-\-force \-\-cache \-\-no\-verify aaa_libraries\-15.0\-x86_64\-5
+.RE
+.fi
+.SH AUTHORS
+.R Jonathan L. Kaus <jlkaus@gmail.com>
+.SH SEE ALSO
+.BR findpkg (8),
+.BR updatepkglists (8),
+.BR pkgtools\-extras.conf (5).

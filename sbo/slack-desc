@@ -8,12 +8,13 @@
                |-----handy-ruler------------------------------------------------------|
 pkgtools-extras: pkgtools-extras (Additional pkgtool-like tools for Slackware Linux)
 pkgtools-extras:
+pkgtools-extras: Tools to make finding and retrieving Slackware packages from remote
+pkgtools-extras: repositories easier, as well as some to help with installing
+pkgtools-extras: parallel boot kernels, and selecting which ones lilo or elilo will
+pkgtools-extras: use.
 pkgtools-extras:
-pkgtools-extras:
-pkgtools-extras:
-pkgtools-extras:
-pkgtools-extras:
-pkgtools-extras:
+pkgtools-extras: While tools are included to operate independently, can also use
+pkgtools-extras: meta-data files from slackpkg and slackpkg+.
 pkgtools-extras:
 pkgtools-extras: https://github.com/jlkaus/pkgtools-extras
 pkgtools-extras:

@@ -65,6 +65,7 @@ SKIP_MISSING=
 PKGNAMES=
 TARGET_DIR=$(pwd)
 USE_CACHE=
+EXEC_STRING=
 
 while [ -n "$1" ]; do
     case $1 in
@@ -89,6 +90,11 @@ while [ -n "$1" ]; do
 	    TARGET_DIR=$1
 	    shift
 	    ;;
+	--exec|-e)
+	    shift
+	    EXEC_STRING=$1
+	    shift
+	    ;;
 	--skip-missing|-s)
 	    SKIP_MISSING=1
 	    shift
@@ -99,6 +105,11 @@ while [ -n "$1" ]; do
 	    ;;
     esac
 done
+
+if [ -n "$EXEC_STRING" ]; then
+    TARGET_DIR=
+    USE_CACHE=
+fi
 
 #echo "DO_VERIFY=$DO_VERIFY"
 #echo "FORCE_DOWNLOAD=$FORCE_DOWNLOAD"
@@ -126,10 +137,12 @@ for x in $PKGNAMES; do
 	if [ -n "$USE_CACHE" ]; then
 	    TARGET_DIR=${CACHEDIR}/${LOCAL_PATH}
 	fi
-	
-	mkdir -p ${TARGET_DIR}
+
+	if [ -n "${TARGET_DIR}" ]; then
+	    mkdir -p ${TARGET_DIR}
+	fi
 	mkdir -p ${TMPDIR}/${LOCAL_PATH}
-	if [ ! -e "${TARGET_DIR}/${PKGNAME}" -o -n "$FORCE_DOWNLOAD" ]; then
+	if [ -z "${TARGET_DIR}" -o ! -e "${TARGET_DIR}/${PKGNAME}" -o -n "$FORCE_DOWNLOAD" ]; then
 	    wget $WGETFLAGS -O ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${MIRROR}${REMOTE_PATH}/${PKGNAME}
 	    if [ $? -eq 0 ]; then
 		if [ -n "$DO_VERIFY" ]; then
@@ -140,9 +153,12 @@ for x in $PKGNAMES; do
 			tail +13 ${WORKDIR}/CHECKSUMS.md5 | grep -e " ${LOCAL_PATH}/${PKGNAME}" |md5sum -c -
 		    ) || abort_clean 1 "md5sum for package $x incorrect."   
 		    gpg --verify ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} 2> /dev/null || abort_clean 1 "gpg signature for package $x incorrect."
+		fi
+
+		if [ -z "$EXEC_STRING" ]; then
 		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${TARGET_DIR}/${PKGNAME}
-		else		
-		    mv -f ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} ${TARGET_DIR}/${PKGNAME}
+		else
+		    EXEC_STRING="${EXEC_STRING} ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}"
 		fi
 	    else
 		if [ -z "${SKIP_MISSING}" ]; then
@@ -154,8 +170,11 @@ for x in $PKGNAMES; do
 	else
 	    warn_msg "Package $x already downloaded.  Skipping."
 	fi
-	
     fi
 done
+
+if [ -n "$EXEC_STRING" ]; then
+    ${EXEC_STRING}
+fi
 
 cleanup

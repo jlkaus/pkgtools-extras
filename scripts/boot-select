@@ -1,0 +1,506 @@
+#!/bin/bash
+
+PKG_LIST_LOC=/var/lib/pkgtools/packages
+BOOT_LOC=/boot
+EFI_LOC=$BOOT_LOC/efi/EFI/Slackware
+LILO_CONF=/etc/lilo.conf
+ELILO_CONF=$EFI_LOC/elilo.conf
+
+TMPDIR=
+function cleanup() {
+    if [ -n "$TMPDIR" ]; then
+	rm -rf $TMPDIR
+    fi
+}
+
+function warn_msg() {
+    echo "*** WARN: " "$@" >&2
+}
+
+function error_msg() {
+    echo "*** ERROR: " "$@" >&2
+}
+
+function abort_clean() {
+    exit_status=$1
+    shift
+    error_msg "$@"
+    cleanup
+    exit ${exit_status}
+}
+
+trap 'cleanup' 2 14 15
+set -e
+
+# The tool now uses check-kernels --boot-config to get details about lilo/elilo config data.
+# For a given allowed tag that is configured, that will give information about where to copy/link the
+# desired kernel and initrd files.
+# Use the actual package database to determine the installed kernel versions
+# Still will need to create initrd if necessary.
+# Allow any configured valid tags, not restricted to old/new/etc.
+
+# options now:
+# --list    Just list the current boot configs _that we can manipulate_! Show tags, labels, initrd status, default status, and current kernel package used.
+# --list-all   List all current boot configs, whether we can manipulate them or not.
+# --unused Show the list of kernel packages we aren't currently using in any boot config (or currently running, headers installed, etc)
+# --skip-initrd   Even if currently using an initrd, don't rebuild or replace the initrd image.  Use at your own risk!
+# --no-lilo       If a given tag we're changing is in lilo.conf, lilo is re-run after changes, normally, but this causes it not to be run.
+# --set TAG=SIZE-VERSION    For the config of TAG (if configured, or complain), copy in the SIZE-VERSION kernel (if installed, or complain) to the appropriate place, and initrd too, created if needed.
+# --clear TAG               For the config of TAG (if configured, or complain), remove the current kernel.  This will cause that TAG to no longer validly boot.
+# Can specify several --set and/or --clear options in a single invocation.
+
+SHOW_LIST=
+SHOW_UNUSED=
+NO_LILO=
+CHANGES=
+DRY_RUN=
+SKIP_INITRD=
+
+while [ -n "$1" ]; do
+    case $1 in
+	--list|-l)
+	    SHOW_LIST=1
+	    shift
+	    ;;
+	--list-all|-a)
+	    SHOW_LIST=2
+	    shift
+	    ;;
+	--unused|-u)
+	    SHOW_UNUSED=1
+	    shift
+	    ;;
+	--no-lilo)
+	    NO_LILO=1
+	    shift
+	    ;;
+	--skip-initrd)
+	    SKIP_INITRD=1
+	    shift
+	    ;;
+	--clear|-c)
+	    shift
+	    CHANGES="$CHANGES $1="
+	    shift
+	    ;;
+	--set|-s)
+	    shift
+	    CHANGES="$CHANGES $1"
+	    shift
+	    ;;
+	--dry-run|-d)
+	    DRY_RUN=1
+	    shift
+	    ;;
+	*)
+	    abort_clean 64 "Unknown parameter $1"
+	    ;;
+    esac
+done
+
+if [ -z "$CHANGES" -a -z "$SHOW_LIST" -a -z "$SHOW_UNUSED" ]; then
+    SHOW_LIST=1
+fi
+
+# Read in the current lilo/elilo configuration
+function parse_lilo_config {
+    if [ -e "$1" ]; then
+    sed -E -n \
+	-e 's/^[[:space:]]*#.*$//' \
+	-e 's/^[[:space:]]*$//' \
+        -e 's/^[[:space:]]*//' \
+        -e 's/[[:space:]]*$//' \
+        -e '/^image|label|initrd|default|other[[:space:]]=/ p' ${1} \
+	|awk -e "BEGINFILE {\
+                     is_default=\"__non_default__\"; \
+	       	 } \
+		 { \
+		     split(\$0,wrk,/[[:space:]]*=[[:space:]]*/); \
+		     if(wrk[1]==\"default\") { \
+		     	 deflt=wrk[2]; \
+		     } \
+	       	     if((wrk[1]==\"image\" || wrk[1]==\"other\") && image_name != \"\") { \
+		         print is_default, image_name, initrd, label;\
+                         image_name=\"\";\
+                         initrd=\"__none__\";\
+                         label=\"\";\
+		         is_default=\"__non_default__\";\
+                     }\
+                     if(wrk[1]==\"image\") {\
+                         image_name=wrk[2];\
+                     }\
+                     if(wrk[1]==\"label\") {\
+                         label=wrk[2];\
+		         if(label==deflt || deflt==\"\") {\
+		             is_default=\"__default__\"; \
+			     deflt=label; \
+	                 }\
+                     }\
+                     if(wrk[1]==\"initrd\") {\
+                         initrd=wrk[2];\
+                     }\
+                  }\
+                  ENDFILE {\
+                      if(image_name!=\"\") {\
+                          print is_default, image_name, initrd, label;\
+                      }\
+                  }"|sed -e "s/^/$2 /;"
+    fi
+}
+
+CONFIGS=$( parse_lilo_config $LILO_CONF __lilo__; parse_lilo_config $ELILO_CONF __elilo__ )
+
+BOOT_CONFIGS=$(while read -r tool dflt image initrd label ; do
+
+    if [ "${image:0:1}" != "/" ]; then
+	if [ "$tool" = "__lilo__" ]; then
+	    image="${BOOT_LOC}/${image}"
+	else
+	    image="${EFI_LOC}/${image}"
+	fi
+    fi
+
+    if [ "${initrd}" != "__none__" -a "${initrd:0:1}" != "/" ]; then
+	if [ "$tool" = "__lilo__" ]; then
+	    initrd="${BOOT_LOC}/${initrd}"
+	else
+	    initrd="${EFI_LOC}/${initrd}"
+	fi
+    fi
+
+    image_tag=${image##*/vmlinuz}
+    initrd_tag=${initrd##*/initrd}
+    initrd_tag=${initrd_tag%%.gz}
+
+#    echo $initrd $image_tag $initrd_tag
+    
+    if [ -z "$image_tag" ]; then
+	real_tag="__invalid_tag__"
+    elif [ "$initrd" != "__none__" -a -z "$initrd_tag" ]; then
+	real_tag="__invalid_tag__"
+    elif [ "$initrd" != "__none__" -a "$initrd_tag" != "$image_tag" ]; then
+	real_tag="__invalid_tag__"
+    elif [ "$image_tag" = "-huge" -o "$image_tag" = "-generic" ]; then
+    	real_tag="__invalid_tag__"
+    else
+	real_tag="${image_tag##-}"
+    fi
+
+#    echo $real_tag
+    
+    if [ -r "$image" ]; then
+	image_md5=$(md5sum $image 2>/dev/null |awk '{print $1}')
+    else
+	image_md5="__missing__"
+    fi
+    if [ "$initrd" != "__none__" ]; then
+	if [ -r "$initrd" ]; then
+	    initrd_md5=$(md5sum $initrd 2>/dev/null |awk '{print $1}')
+	else
+	    initrd_md5=__missing__
+	fi
+    else
+	initrd_md5=__none__
+    fi
+
+    vers=$(echo "$image_tag" | sed -E -n -e '/[[:digit:].]+/ { s/^[^[:digit:].]*-//; s/-[^[:digit:].]*$//; s/-.*$//; p; q }')
+
+    found_size=
+    found_ver=
+    found_pkg=__notfound__
+    if [ -z "$initrd_md5" ]; then
+	found_initrd="__initrd_none__"
+    else
+	found_initrd="__notfound__"
+    fi
+    
+    for y in $BOOT_LOC/vmlinuz-*-*; do
+	y_md5=$(md5sum $y 2>/dev/null |awk '{print $1}')
+	y_file=${y##*/}
+	y_corename=${y_file##vmlinuz-}
+	y_size=${y_corename%%-*}
+	y_ver=${y_corename##*-}
+	y_initrd="initrd-${y_size}-${y_ver}.gz"
+	if [ -r "$BOOT_LOC/${y_initrd}" ]; then
+	    y_initrd_md5=$(md5sum $BOOT_LOC/${y_initrd} 2>/dev/null |awk '{print $1}')
+	else
+	    y_initrd_md5=
+	fi
+	
+#	echo "  CHECK: $y_corename $y_size $y_ver $y_file $y_md5 $y_initrd $y_initrd_md5"
+
+	if [ "$initrd_md5" = "__none__" ]; then
+	    found_initrd="__initrd_none__"
+	elif [ "$initrd_md5" = "__missing__" ]; then
+	    found_initrd="__initrd_missing__"
+	elif [ "$initrd_md5" == "$y_initrd_md5" ]; then
+	    found_initrd="__initrd_ok__"
+	else
+	    found_initrd="__initrd_changed__"
+	fi
+
+	if [ "$image_md5" == "$y_md5" ]; then
+	    found_pkg=$(grep -l -s "^${BOOT_LOC##/}/vmlinuz-${y_corename}" ${PKG_LIST_LOC}/kernel-*)
+	    found_pkg=${found_pkg##*/}
+	    found_pkg=${found_pkg:-__notfound__}
+	    found_size=${y_size}
+	    found_ver=${y_ver}
+	    if [ "$found_pkg" = "__notfound__" ]; then
+		found_ver=
+	    fi
+	    break
+	fi
+    done
+
+#    echo $vers $found_ver >&2
+    
+    if [ -n "$vers" ]; then
+	real_tag="__invalid_tag__"
+    fi
+    if [ -n "$found_ver" ] ; then
+	vers=$found_ver
+    fi
+    if [ -z "$vers" ]; then
+	vers=__unknown_version__
+    fi
+    
+#    echo "$tool $real_tag $dflt $image $initrd $found_initrd $vers $found_pkg $label"
+    echo "$real_tag $vers $image $found_pkg $initrd $found_initrd $tool $dflt $label"
+    
+done <<< "$CONFIGS")
+
+
+
+# Translate the configs into a map keyed by just valid tags.
+# If desired, show the current valid configs
+if [ -n "$SHOW_LIST" ]; then
+    echo
+    echo "Current boot configuration:"
+fi
+declare -A BC_IMAGE
+declare -A BC_INITRD
+declare -A BC_TOOL
+BC_USED_PKGS=
+BC_USED_PKG_VERS=
+BC_USED_VERS=
+while read -r tag vers image package initrd initrd_status tool dflt label ; do
+    if [ -n "$SHOW_LIST" -a "$tag" != "__invalid_tag__" ] || [ "$SHOW_LIST" = "2" ] ; then
+	# Show tags, labels, initrd status, default status, and current kernel package used.
+	if [ "$dflt" = "__default__" ]; then
+	    simple_default=",default"
+	fi
+	simple_initrd_status=${initrd_status//__/}
+	simple_initrd_status=${simple_initrd_status//_/-}
+	label=${label##\"}
+	label=${label%%\"}
+	echo "  $tag=$package \"$label\" ($simple_initrd_status$simple_default,$vers)"
+	echo "    image=$image"
+	if [ "$initrd" != "__none__" ]; then
+	    echo "    initrd=$initrd"
+	fi
+    fi
+    if [ "$tag" != "__invalid_tag__" ]; then
+	if [ -n "${BC_IMAGE[$tag]}" ]; then
+	    abort_clean 78 "Duplicate boot configuration tag [$tag]"
+	fi
+	BC_IMAGE[$tag]=$image
+	BC_INITRD[$tag]=$initrd
+	BC_TOOL[$tag]=$tool
+    fi
+    if [ "$package" != "__notfound__" ]; then
+	BC_USED_PKGS="${BC_USED_PKGS}${package}"$'\n'
+	BC_USED_PKG_VERS="${BC_USED_PKG_VERS}${vers}"$'\n'
+    elif [ "$vers" != "__unknown_version__" ]; then
+	BC_USED_VERS="${BC_USED_VERS}${vers}"$'\n'
+    fi
+done <<< "$BOOT_CONFIGS";
+
+if [ -n "$SHOW_UNUSED" ]; then
+    if [ -n "$SHOW_LIST" -o -n "$CHANGES" ]; then
+	echo
+	echo "Unused kernel packages:"
+	echo
+    fi
+
+    # List all installed versions (candidates for removal, that is. Don't list headers or firmware.)
+    REMOVAL_CANDL=$(find $PKG_LIST_LOC -type f "(" -name "kernel-huge-*" -o -name "kernel-generic-*" -o -name "kernel-modules-*" -o -name "kernel-source-*" ")" -printf "%f\n")
+#    echo "$REMOVAL_CANDL"
+    
+    # List the running kernel version -- don't remove huge, generic, modules, or source version of this kernel.
+    RUNNING_VERS=$(uname -r)
+    
+    # List the currently installed headers package -- don't remove huge, generic, modules, or source version of this kernel.
+    HEADERS_VERS=$(find $PKG_LIST_LOC -type f -name "kernel-headers-*" -printf "%f\n" | sed -E -e 's/^kernel-headers-//; s/-.*$//;' )
+
+    # List all packages definitely used by a proper boot config.  Also, don't remove modules version of these kernels.
+    BC_USED_PKGS=${BC_USED_PKGS%%$'\n'}
+    BC_USED_PKG_VERS=${BC_USED_PKG_VERS%%$'\n'}
+
+    # List kernel versions that appear to be used by a boot config, but weren't definitely determined to be an installed kernel binary package
+    #   Don't remove source versions of these kernels.
+    BC_USED_VERS=${BC_USED_VERS%%$'\n'}
+
+
+    EXCEPT_PKGS=$BC_USED_PKGS
+    EXCEPT_PREFIXES=$(
+	echo "$RUNNING_VERS" | sed -E -e 's/^/kernel-huge-/; s/$/-/';
+	echo "$RUNNING_VERS" | sed -E -e 's/^/kernel-generic-/; s/$/-/';
+	echo "$RUNNING_VERS" | sed -E -e 's/^/kernel-modules-/; s/$/-/';
+	echo "$RUNNING_VERS" | sed -E -e 's/^/kernel-source-/; s/$/-/';
+	echo "$HEADERS_VERS" | sed -E -e 's/^/kernel-huge-/; s/$/-/';
+	echo "$HEADERS_VERS" | sed -E -e 's/^/kernel-generic-/; s/$/-/';
+	echo "$HEADERS_VERS" | sed -E -e 's/^/kernel-modules-/; s/$/-/';
+	echo "$HEADERS_VERS" | sed -E -e 's/^/kernel-source-/; s/$/-/';
+	echo "$BC_USED_PKG_VERS" | sed -E -e 's/^/kernel-modules-/; s/$/-/';
+	echo "$BC_USED_VERS" | sed -E -e 's/^/kernel-source-/; s/$/-/';
+		   )
+
+    echo "$REMOVAL_CANDL" | grep -v -F -x -f <(echo "${EXCEPT_PKGS}") | grep -v -F -f <(echo "${EXCEPT_PREFIXES}")
+fi
+
+
+
+RERUN_LILO=
+CHANGES_VALIDATED=1
+
+# If anything is set in the changes list, validate that the tags each exist and are modifyable, and verify the target is either empty, or refers to a valid installed kernel package.
+# If everything validated OK about the changes list, go through each entry and apply the changes in turn.  For each kernel, determine if initrd needs to be built for it, and if lilo needs to be run after everything is done.
+if [ -n "$CHANGES" ]; then
+    echo
+    echo "Validating requested changes ..."
+    echo
+
+    for x in $CHANGES; do
+	VALS=( ${x//=/ } )
+	tag=${VALS[0]}
+	target=${VALS[1]}
+	if [ -z "${BC_TOOL[$tag]}" ]; then
+	    warn_msg "Tag [$tag] not found as valid tag in lilo.conf or elilo.conf"
+	    CHANGES_VALIDATED=
+	else
+	    if [ "${BC_TOOL[$tag]}" = "__lilo__" ]; then
+		RERUN_LILO=1
+	    fi
+	    if [ -n "$target" ]; then
+		size=${target##kernel-}
+		size=${size%%-*}
+		vers=${target##kernel-${size}-}
+		vers=${vers%%-*}
+		excess=${target##kernel-${size}-${vers}-}
+		if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
+		    warn_msg "Target for tag $tag: [$target] (${size}-${vers}) is not a currently installed kernel package."
+		    CHANGES_VALIDATED=
+		elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
+		    warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
+		    CHANGES_VALIDATED=
+		elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
+		    warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
+		    CHANGES_VALIDATED=
+		else		
+		    :
+		fi
+	    else
+		:
+	    fi
+	fi
+    done
+
+    if [ -n "$CHANGES_VALIDATED" ]; then
+	for x in $CHANGES; do
+	    echo "Executing change [$x]:"
+	    VALS=( ${x//=/ } )
+	    tag=${VALS[0]}
+	    target=${VALS[1]}
+	    if [ -z "$target" ]; then
+		echo "  Removing kernel image ${BC_IMAGE[$tag]} ..."
+		if [ -z "$DRY_RUN" ]; then
+		    rm -f ${BC_IMAGE[$tag]}
+		else
+		    echo "    # rm -f ${BC_IMAGE[$tag]}"
+		fi
+		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		    if [ -z "$SKIP_INITRD" ]; then
+			echo "  Removing initrd image ${BC_INITRD[$tag]} ..."
+			if [ -z "$DRY_RUN" ]; then
+			    rm -f ${BC_INITRD[$tag]}
+			else
+			    echo "    # rm -f ${BC_INITRD[$tag]}"
+			fi
+		    else
+			echo "  Skipping removal of initrd image ${BC_INITRD[$tag]}."
+		    fi
+		fi
+		warn_msg "Kernel tagged [$tag] was removed!  If this is a default boot config, please set it to something before rebooting!"
+	    else
+		size=${target##kernel-}
+		size=${size%%-*}
+		vers=${target##kernel-${size}-}
+		vers=${vers%%-*}
+		excess=${target##kernel-${size}-${vers}-}
+
+		tgt_image=/boot/vmlinuz-${size}-${vers}
+		tgt_initrd=/boot/initrd-${size}-${vers}.gz
+
+		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		    if [ -z "$SKIP_INITRD" ]; then
+			echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
+			if [ -z "$DRY_RUN" ];then
+			    mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
+			else
+			    echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
+			fi
+		    else
+			warn_msg "Skipping creation of new initrd [$tgt_initrd] for kernel ${vers}!  You almost certainly will need to do this manually!"
+		    fi
+		fi
+
+		echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
+		if [ -z "$DRY_RUN" ]; then
+		    cp -a $tgt_image ${BC_IMAGE[$tag]}
+		else
+		    echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
+		fi
+
+		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		    if [ -z "$SKIP_INITRD" ]; then
+			echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
+			if [ -z "$DRY_RUN" ]; then
+			    cp -a $tgt_initrd ${BC_INITRD[$tag]}
+			else
+			    echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+			fi
+		    else
+			warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
+		    fi
+		fi
+	    fi
+	    echo
+	done
+
+	if [ -n "$RERUN_LILO" ]; then
+	    if [ -z "$NO_LILO" ]; then
+		echo "Running lilo ..."
+		if [ -z "$DRY_RUN" ]; then
+		    lilo
+		else
+		    echo "  # lilo"
+		fi
+	    else
+		warn_msg "--no-lilo was specified, but a kernel controlled by lilo.conf was modified.  Please re-run 'lilo' before rebooting!"
+	    fi
+	fi
+
+	if [ -n "$DRY_RUN" ]; then
+	    echo "Dry-run complete."
+	    echo
+	else
+	    echo "Changes complete."
+	    echo
+	fi
+
+    else
+	abort_clean 1 "Invalid changes specified.  Aborting."
+    fi
+fi
+
+cleanup

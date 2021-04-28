@@ -1,0 +1,52 @@
+Additional pkgtool-like tools for Slackware Linux.
+
+Tools to make finding and retrieving Slackware packages from remote
+repositories easier, as well as some to help with installing
+parallel boot kernels, and selecting which ones lilo or elilo will
+use.
+
+While tools are included to operate independently, can also use
+meta-data files from slackpkg and slackpkg+.
+
+While certainly there is some functional overlap with slackpkg/slackpkg+,
+these tools attempt to provide just basic low-level tools to interact
+with remote repositories (and local installed package metadata) in a way
+that is easy to script to and extend.
+
+Primary tools for low-level interaction with remote repositories:
+  * updatepkglists
+	Maintains local metadata for packages available on configured
+	remote repositories.  Unnecessary if using slackpkg/slackpkg+
+	metadata.
+  * findpkg
+	Search for packages by name on remote repositories, and show
+	available packages, along with local installation status.
+  * fetchpkg
+	Download packages from remote repositories.  Package name must
+	be explicit, to avoid getting a different version, rebuild, or
+	a duplicate package from a different repository.  An "exec" mode
+	enables automatic installation of the downloaded packages using
+	installpkg, upgradepkg, or installkernelpkg (or whatever tool
+	you chose to create or co-opt).
+
+Tools to help with kernel package maintenance:
+  * installkernelpkg
+	A basic extension of installpkg/upgradepkg that enables side-by-
+	side installation of different versions of the same package (for
+	kernels, primarily), while still doing upgrades if a particular
+	package-version was simply rebuilt.  Supports any package, but
+	really only kernel packages are likely to behave in any useful
+	manner.
+  * boot-select
+	Tool to analyze lilo and elilo configs and allow changing the
+	kernel version associated with a particular boot config.
+	Handles rebuilding associated initrd images using mkinitrd and
+	mkinitrd.conf.
+	Also makes it easy to determine which installed kernel packages
+	are no longer useful and could be removed.
+
+Note that while other kernel-helper scripts were considered, most devolved
+into simple pipelines along the lines of
+`findpkg | fetchpkg --exec installkernelpkg` or
+`boot-select --unused | removepkg` that are fairly easy to develop and
+understand.

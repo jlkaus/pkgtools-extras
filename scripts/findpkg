@@ -66,6 +66,7 @@ fi
 
 SHOW_INFO=
 SHOW_LINK=
+TERSE_MODE=
 STATUS_LIST="installed available"
 REPO_LIST="__unknown__ __available__"
 PATTERN=
@@ -77,6 +78,10 @@ while [ -n "$1" ]; do
 	    ;;
 	--link|-l)
 	    SHOW_LINK=1
+	    shift
+	    ;;
+	--terse|-t)
+	    TERSE_MODE=1
 	    shift
 	    ;;
 	--status|-s|--stat|--statuses)
@@ -201,10 +206,20 @@ for x in ${MATCHING_PKGS}; do
 		    echo
 		fi
 	    else
-		if [ -n "$SHOW_LINK" ]; then
-		    printf "%-6s %-26s %-22s %-40s %s\n" $ISTATE $AREPO $REMOTE_PATH $x $DIRECT_LINK
+		if [ -n "$TERSE_MODE" ]; then
+		    if [ -z "$SHOW_LINK" ]; then
+			echo $x
+		    else
+			if [ "$DIRECT_LINK" != "__unknown__" ]; then
+			    echo $DIRECT_LINK
+			fi
+		    fi
 		else
-		    printf "%-6s %-26s %-22s %s\n" $ISTATE $AREPO $REMOTE_PATH $x
+		    if [ -n "$SHOW_LINK" ]; then
+			printf "%-6s %-26s %-22s %-40s %s\n" $ISTATE $AREPO $REMOTE_PATH $x $DIRECT_LINK
+		    else
+			printf "%-6s %-26s %-22s %s\n" $ISTATE $AREPO $REMOTE_PATH $x
+		    fi
 		fi
 	    fi
 	fi
