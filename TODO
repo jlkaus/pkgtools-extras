@@ -1,10 +1,9 @@
 scripts:
-1. create installkernelpkg
+1. Make findpkg a bit more useful to understand upgrades that could happen
 
 man-pages:
 8. create man page for installkernelpkg
 4. create man page for boot-select
-7. update fetchpkg man page to describe exec options
-9. update findpkg man page to describe terse mode
+10. update findpkg man page for new selection options
 
 

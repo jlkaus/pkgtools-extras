@@ -5,8 +5,8 @@ fetchpkg \- Simplify downloading of a remote Slackware package.
 .B fetchpkg
 [\fB\-f\fR, \fB\-\-force\fR]
 [\fB\-n\fR, \fB\-\-no\-verify\fR]
-[\fB\-c\fR, \fB\-\-cache\fR | \fB\-d\fR, \fB\-\-dir\fR \fITARGET\fR]
 [\fB\-s\fR, \fB\-\-skip\-missing\fR]
+[\fB\-c\fR, \fB\-\-cache\fR | \fB\-d\fR, \fB\-\-dir\fR \fITARGET\fR | \fB\-e\fR, \fB\-\-exec\fR \fIEXECSTRING\fR]
 .IR PACKAGES ...
 .SH DESCRIPTION
 .B fetchpkg
@@ -37,23 +37,32 @@ and the package signature is verified against the locally installed gpg key for 
 If \fB\-\-no\-verify\fR is specified, none of these checks occur.
 Use at your own risk!
 .TP
-.BR \-c ", " \-\-cache
-By default, the package is downloaded to the current working directory.
-If \fB\-\-cache\fR is specified, and \fBCACHEDIR\fR is defined in the
-.BR pkgtools\-extras.conf (5)
-config file, the file will be downloaded to the cache instead.
-Cannot be used with \fB\-\-dir\fR.
-.TP
-.BR \-d ", " \-\-dir " " \fITARGET\fR
-By default, the package is downloaded to the current working directory.
-If \fB\-\-dir\fR is specified, the package is instead downloaded to the \fITARGET\fR directory.
-Cannot be used with \fB\-\-cache\fR.
-.TP
 .BR \-s ", " \-\-skip\-missing
 By default, if a given package cannot be located at any remote repository, \fBfetchpkg\fR will exit immediately, with an error
 (and not proceed with downloading additional packages).
 If \fB\-\-skip\-missing\fR is specified, a warning will be emitted, but the remaining packages will still be downloaded, without a bad exit status.
 Note that if a package is found, but unable to be downloaded, or verification fails, \fBfetchpkg\fR will still exit immediately, with an error.
+.TP
+.BR \-c ", " \-\-cache
+By default, the package is downloaded to the current working directory.
+If \fB\-\-cache\fR is specified, and \fBCACHEDIR\fR is defined in the
+.BR pkgtools\-extras.conf (5)
+config file, the file will be downloaded to the cache instead.
+Cannot be used with \fB\-\-dir\fR or \fB\-\-exec\fR.
+.TP
+.BR \-d ", " \-\-dir " " \fITARGET\fR
+By default, the package is downloaded to the current working directory.
+If \fB\-\-dir\fR is specified, the package is instead downloaded to the \fITARGET\fR directory.
+Cannot be used with \fB\-\-cache\fR or \fB\-\-exec\fR.
+.TP
+.BR \-e ", " \-\-exec " " \fIEXECSTRING\fR
+If \fB\-\-exec\fR is specified, after downloading the packages to a temporary directory and verifying them,
+the \fIEXECSTRING\fR is executed as a command, passing all package filenames as arguments.
+After execution of the \fIEXECSTRING\fR, the temporary directory and all packages are deleted.
+Typically, this would be used to install the packages after downloading them, without keeping the packages around afterwards.
+To add parameters to the command to be executed, include them in the \fIEXECSTRING\fR, and surround the entire string with quotes.
+Note that even if no packages were downloaded, the \fIEXECSTRING\fR will still be executed, just with no parameters added.
+Cannot be used with \fB\-\-cache\fR or \fB\-\-dir\fR.
 .SH EXIT STATUS
 The exit status is \fB0\fR if all packages were downloaded and verified successfully.
 Other possible exit statuses are:
@@ -69,6 +78,9 @@ Unable to create temporary directory.
 .TP
 .B 78
 Missing or invalid configuration file.
+.TP
+.B *
+If \fB\-\-exec\fR is used, and actually executes, the exit status of the \fIEXECSTRING\fR will be used as the exit status of \fBfetchpkg\fR.
 .SH ENVIRONMENT
 .TP
 .B PKGTOOLS_EXTRAS_CONF
@@ -104,6 +116,14 @@ To fetch a package to the local package cache, without verification, and replace
 .nf
 .RS 5
 .B fetchpkg \-\-force \-\-cache \-\-no\-verify aaa_libraries\-15.0\-x86_64\-5
+.RE
+.fi
+.PP
+To fetch a package and upgrade an existing older package, or install it new:
+.PP
+.nf
+.RS 5
+.B fetchpkg \-\-exec \[dq]upgradepkg \-\-install-new\[dq] vim\-8.2.2814\-x86_64\-1
 .RE
 .fi
 .SH AUTHORS

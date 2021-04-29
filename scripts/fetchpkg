@@ -175,6 +175,8 @@ done
 
 if [ -n "$EXEC_STRING" ]; then
     ${EXEC_STRING}
+    exit $?
 fi
 
 cleanup
+exit 0

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+PKG_LIST_LOC=/var/lib/pkgtools/packages
+
 TMPDIR=
 function cleanup() {
     if [ -n "$TMPDIR" ]; then
@@ -35,6 +37,8 @@ trap 'cleanup' 2 14 15 EXIT
 
 USE_REINSTALL=
 USE_INSTALL_NEW=
+DRY_RUN=
+SKIP_MISSING=
 PKGNAMES=
 
 while [ -n "$1" ]; do
@@ -43,8 +47,16 @@ while [ -n "$1" ]; do
 	    USE_REINSTALL=1
 	    shift
 	    ;;
-	--install-new)
+	--install-new|-i)
 	    USE_INSTALL_NEW=1
+	    shift
+	    ;;
+	--dry-run|-d)
+	    DRY_RUN=1
+	    shift
+	    ;;
+	--skip-missing|-s)
+	    SKIP_MISSING=1
 	    shift
 	    ;;
 	*)
@@ -54,16 +66,97 @@ while [ -n "$1" ]; do
     esac
 done
 
-# For each package:
-#   verify the file exists
-#   Determine if the package is installed already, and if so, if the version matches, and if the build matches.
-#   If the package exists, but the version does not, install it.
-#   If the package exists, the version exists, but the build is new, install it, then remove the old build.
-#   If the package exists, the version exists, and the build matches, do nothing, unless --reinstall is specified, then install it.
-#   If the package does not exist, do nothing, unless --install-new is specified, then install it.
-# If a package file doesn't exist, or the installation fails, abort immediately.  Don't attempt to undo anything.
+set -e
 
+for x in ${PKGNAMES}; do
+    if [ -e "${x}" -a -r "${x}" -a -f "${x}" ]; then
+	PVABE=${x##*/}
+	PVAB=${PVABE%%.t[blxg]z}
+	EXT=${PVABE##*.}
+	BUILD=${PVAB##*-}
+	PVA=${PVAB%-*}
+	ARCH=${PVA##*-}
+	PV=${PVA%-*}
+	VER=${PV##*-}
+	PKG=${PV%-*}
 
+	echo "========================================================"
+	echo "Processing $x:" # [$PKG] [$VER] [$ARCH] [$BUILD] [$EXT]"
 
+	EXACT_BUILD=$(find ${PKG_LIST_LOC} -type f -name "${PKG}-${VER}-${ARCH}-${BUILD}" -printf "%f\n")
+	EXACT_VERSION=$(find ${PKG_LIST_LOC} -type f -name "${PKG}-${VER}-${ARCH}-*" -printf "%f\n" )
+	EXACT_PKG=$(find ${PKG_LIST_LOC} -type f -name "${PKG}-*-${ARCH}-*" -printf "%f\n")
+
+	EXACT_BUILD_COUNT=$(echo "$EXACT_BUILD" |grep -x -s -F -v "" | wc -l)
+	EXACT_VERSION_COUNT=$(echo "$EXACT_VERSION" |grep -x -s -F -v "" | wc -l)
+	EXACT_PKG_COUNT=$(echo "$EXACT_PKG" |grep -x -s -F -v "" | wc -l)
+
+#	echo $EXACT_BUILD_COUNT: $EXACT_BUILD
+#	echo $EXACT_VERSION_COUNT: $EXACT_VERSION
+#	echo $EXACT_PKG_COUNT: $EXACT_PKG
+
+	OLD_PKG=
+	SKIP_INST=${DRY_RUN}
+	NEW_PKG=$x
+	
+	if [ $EXACT_BUILD_COUNT -gt 0 ]; then
+	    # Exact same package-ver-build already installed.
+	    if [ -n "$USE_REINSTALL" ]; then
+		# Ok, re-install it anyway.
+		echo "  Re-installing [$EXACT_BUILD] with [$x] ..."
+		OLD_PKG="$EXACT_BUILD"
+	    else
+		echo "  Package $x already installed [$EXACT_BUILD].  Skipping."
+		SKIP_INST=1
+	    fi
+	elif [ $EXACT_VERSION_COUNT -gt 0 ]; then
+	    # Exact package-ver already installed, but not this build.  We need to upgrade it.
+	    echo "  Replacing [$EXACT_VERSION] with [$x] ..."
+	    OLD_PKG="$EXACT_VERSION"
+	elif [ $EXACT_PKG_COUNT -gt 0 ]; then
+	    # Package is installed, but a different version.  Install this one side-by-side.
+	    echo "  Installing new version [$x] ..."
+	else
+	    # Package is not installed at all yet.
+	    if [ -n "$USE_INSTALL_NEW" ]; then
+		# ok, install it anyway
+		echo "  Installing new package [$x] ..."
+	    else
+		echo "  Package $x has no currently installed version in place.  Skipping."
+		SKIP_INST=1
+	    fi
+	fi
+
+	if [ -z "$SKIP_INST" ]; then
+	    TIMESTAMP=$(date +%Y-%m-%d,%T)
+	    if [ -n "$OLD_PKG" ]; then
+		# move all old packages to renamed-old, like upgradepkg
+		for y in $OLD_PKG; do
+		    mv $PKG_LIST_LOC/$y $PKG_LIST_LOC/$y-upgraded-$TIMESTAMP
+		done		
+	    fi
+	    # Do the actual install
+	    installpkg $NEW_PKG
+	    if [ -n "$OLD_PKG" ]; then
+		# remove all old renamed packages, like upgradepkg
+		for y in $OLD_PKG; do
+		    removepkg $y-upgraded-$TIMESTAMP
+		done
+		
+		# Re-do the install with no-overwrite, if we had to remove any of the old ones, for safety.
+		installpkg --no-overwrite $NEW_PKG
+	    fi
+	fi
+	
+	echo
+	
+    else
+	if [ -n "$SKIP_MISSING" ]; then
+	    warn_msg "Package ${x} does not exist, or is unreadable.  Skipping."
+	else
+	    abort_clean 66 "Package ${x} does not exist, or is unreadable."
+	fi
+    fi
+done
 
 cleanup

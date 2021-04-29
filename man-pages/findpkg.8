@@ -5,6 +5,7 @@ findpkg \- Simplify finding available Slackware packages from remote repositorie
 .B findpkg
 [\fB\-i\fR, \fB\-\-info\fR]
 [\fB\-l\fR, \fB\-\-link\fR]
+[\fB\-t\fR, \fB\-\-terse\fR]
 [\fB\-s\fR, \fB\-\-status\fR \fISTATUSLIST\fR]
 [\fB\-r\fR, \fB\-\-repo\fR \fIREPOLIST\fR]
 .IR PATTERNS ...
@@ -28,10 +29,16 @@ including installation status, source repository, remote path, and the detailed 
 If \fB\-\-info\fR is specified, for each package found, the full slack-desc for the package is displayed,
 in addition to the concise package information normally displayed, and a full download URI for the package.
 .TP
+.BR \-t ", " \-\-terse
+If \fB\-\-terse\fR is specified, just the full package name is displayed for each package.
+If \fB\-\-link\fR is also specified, instead of the package name, just the download link for each package is displayed (if known).
+If \fB\-\-info\fR is also specified, \fB\-\-info\fR output is displayed, and \fB\-\-terse\fR has no effect.
+.TP
 .BR \-l ", " \-\-link
-By default, a download link for the package is only included with \-\-info, and not the concise results.
+By default, a download link for the package is only included with \fB\-\-info\fR, and not the concise results.
 If \fB\-\-link\fR is specified, the concise results include the download URI for the package as well.
 Using \fB\-\-link\fR with \fB\-\-info\fR acts the same as just using \fB\-\-info\fR.
+Using \fB\-\-link\fR with \fB\-\-terse\fR changes the terse display to just be the download link for each package.
 .TP
 .BR \-s ", " \-\-status " " \fISTATUSLIST\fR
 By default, packages that are actually installed, as well as those available in a remote repository, are included in the results.
