@@ -51,7 +51,7 @@ set -e
 
 SHOW_LIST=
 SHOW_UNUSED=
-NO_LILO=
+SKIP_LILO=
 CHANGES=
 DRY_RUN=
 SKIP_INITRD=
@@ -70,8 +70,8 @@ while [ -n "$1" ]; do
 	    SHOW_UNUSED=1
 	    shift
 	    ;;
-	--no-lilo)
-	    NO_LILO=1
+	--skip-lilo)
+	    SKIP_LILO=1
 	    shift
 	    ;;
 	--skip-initrd)
@@ -478,7 +478,7 @@ if [ -n "$CHANGES" ]; then
 	done
 
 	if [ -n "$RERUN_LILO" ]; then
-	    if [ -z "$NO_LILO" ]; then
+	    if [ -z "$SKIP_LILO" ]; then
 		echo "Running lilo ..."
 		if [ -z "$DRY_RUN" ]; then
 		    lilo
@@ -486,7 +486,7 @@ if [ -n "$CHANGES" ]; then
 		    echo "  # lilo"
 		fi
 	    else
-		warn_msg "--no-lilo was specified, but a kernel controlled by lilo.conf was modified.  Please re-run 'lilo' before rebooting!"
+		warn_msg "--skip-lilo was specified, but a kernel controlled by lilo.conf was modified.  Please re-run 'lilo' before rebooting!"
 	    fi
 	fi
 

@@ -1,114 +1,149 @@
-.TH FETCHPKG 8 "2021-04-22" "pkgtools-extras 0.8.0"
+.TH BOOT\-SELECT 8 "2021-04-22" "pkgtools-extras 0.8.0"
 .SH NAME
-fetchpkg \- Simplify downloading of a remote Slackware package.
+boot\-select \- Simplify selection of an appropriate boot kernel for \fBlilo\fR and \fBelilo\fR systems.
 .SH SYNOPSIS
-.B fetchpkg
-[\fB\-f\fR, \fB\-\-force\fR]
-[\fB\-n\fR, \fB\-\-no\-verify\fR]
-[\fB\-c\fR, \fB\-\-cache\fR | \fB\-d\fR, \fB\-\-dir\fR \fITARGET\fR]
-[\fB\-s\fR, \fB\-\-skip\-missing\fR]
-.IR PACKAGES ...
+.B boot\-select
+[\fB\-l\fR, \fB\-\-list\fR | \fB\-a\fR, \fB\-\-list\-all\fR]
+[\fB\-u\fR, \fB\-\-unused\fR]
+[\fB\-\-skip\-lilo\fR]
+[\fB\-\-skip\-initrd\fR]
+[\fB\-d\fR, \fB\-\-dry\-run\fR]
+[\fB\-s\fR, \fB\-\-set\fR \fITAG\fB=\fR[\fIKERNELPKG\fR]] ...
+[\fB\-c\fR, \fB\-\-clear\fR \fITAG\fR] ...
 .SH DESCRIPTION
-.B fetchpkg
-uses the package lists maintained by
-.BR updatepkglist (8)
-or
-.BR slackpkg "(8) " update
-(including with \fBslackpkgplus\fR installed)
-to make it easier to download particular package versions from remote repositories.
+.B boot\-select
+analyzes the
+.BR lilo.conf (5)
+and
+.BR elilo.conf
+files to determine which kernels are in use to boot the system,
+and enables replacement of the configured kernels with alternate kernel packages to boot from.
 .PP
-After downloading, it verifies the packages match the expected md5 sum and is signed appropriately,
-before saving the package at the intended location.
+Without any \fB\-\-set\fR or \fB\-\-clear\fR options specified, the current boot configurations are simply displayed, as though \fB\-\-list\fR were specified.
 .PP
-.IR PACKAGES ...
-can be a list of packages to download, but must be the full name, including version, arch, and build tag.
-Remote URL, remote path, and package extension should not be included.
+Any number of \fB\-\-set\fR and \fB\-\-clear\fR options may be specified, which will each be processed in order, potentially changing many boot
+configurations at once.
 .SH OPTIONS
 .TP
-.BR \-f ", " \-\-force
-By default, if the package file already exists at the intended download target location,
-the package is not re-downloaded.
-If \fB\-\-force\fR is specified, it is re-downloaded, re-verified, and replaces the old file,
-assuming the download works and the verification succeeds.
+.BR \-l ", " \-\-list
+List the current manipulatable boot configurations before changing anything.
+If no other operation options are specified, this is the default operation.
 .TP
-.BR \-n ", " \-\-no\-verify
-By default, the MD5 sum of each downloaded package is checked against the most recent metadata,
-and the package signature is verified against the locally installed gpg key for the source repository.
-If \fB\-\-no\-verify\fR is specified, none of these checks occur.
-Use at your own risk!
+.BR \-a ", " \-\-list\-all
+Like \fB\-\-list\fR, but include all configured boot options, including ones which
+.B boot\-select
+cannot modify, for informational purposes.
 .TP
-.BR \-c ", " \-\-cache
-By default, the package is downloaded to the current working directory.
-If \fB\-\-cache\fR is specified, and \fBCACHEDIR\fR is defined in the
-.BR pkgtools\-extras.conf (5)
-config file, the file will be downloaded to the cache instead.
-Cannot be used with \fB\-\-dir\fR.
+.BR \-u ", " \-\-unused
+Display a list of kernel packages that are installed, but are not used any any configured boot options.
+Also excludes the currently running kernel, and any kernels associated with the currently installed \fBkernel\-headers\fR package.
+The intent is that these packages could be removed from the system with
+.BR removepkg (8)
+without having any unintended consequences on the booting or operation of the system.
+Note, however, that this list is determined prior to any modifications of boot configurations using the \fB\-\-set\fR or \fB\-\-clear\fR options.
 .TP
-.BR \-d ", " \-\-dir " " \fITARGET\fR
-By default, the package is downloaded to the current working directory.
-If \fB\-\-dir\fR is specified, the package is instead downloaded to the \fITARGET\fR directory.
-Cannot be used with \fB\-\-cache\fR.
+.BR \-\-skip\-lilo
+By default, if the boot configuration that is modified is from the \fBlilo.conf\fR file,
+.BR lilo (8)
+will be re-run after the modifications are complete, so that the system can boot using the newly specified kernel.
+If \fB\-\-skip\-lilo\fR is specified, this does not happen.
+It will then be the responsibility of the user to ensure that
+.BR lilo (8)
+is run before rebooting if using a changed boot configuration.
 .TP
-.BR \-s ", " \-\-skip\-missing
-By default, if a given package cannot be located at any remote repository, \fBfetchpkg\fR will exit immediately, with an error
-(and not proceed with downloading additional packages).
-If \fB\-\-skip\-missing\fR is specified, a warning will be emitted, but the remaining packages will still be downloaded, without a bad exit status.
-Note that if a package is found, but unable to be downloaded, or verification fails, \fBfetchpkg\fR will still exit immediately, with an error.
+.BR \-\-skip\-initrd
+By default, if a boot configuration that currently uses an initrd image is modified to point to a different kernel,
+the initrd image is rebuilt (using
+.BR mkinitrd (8)
+and
+.BR mkinitrd.conf (5))
+to use the newly specified kernel version.
+Specifying \fB\-\-skip\-initrd\fR prevents that from happening.
+It will then be the responsibility of the user to ensure that the initrd image is properly rebuilt to include modules for the new kernel version, etc.
+.TP
+.BR \-d ", " \-\-dry\-run
+Makes no changes to the system, but reports the changes that would be made.
+.TP
+.BR \-s ", " \-\-set " " \fITAG\fR=[\fIKERNELPKG\fR]
+Requests to change the boot configuration associated with \fITAG\fR to use the kernel from \fIKERNELPKG\fR,
+which must be a fully specified, currently installed, valid kernel package (a specific version of \fBkernel\-huge\fR or \fBkernel\-generic\fR).
+If \fIKERNELPKG\fR is not specified, acts as \fB\-\-clear\fR \fITAG\fR (see below).
+.TP
+.BR \-c ", " \-\-clear " " \fITAG\fR
+Requests to remove the current kernel for the boot configuration associated with \fITAG\fR.
+Note that this does not remove the kernel package itself, just the copy of the kernel image used for this boot configuration.
+Also, this does not remove the actual boot configuration from the boot configuration files.
+Attempting to boot this kernel without re-setting the configuration to point to a valid installed kernel will fail.
+Typically only done as an intermediate step to setting a new kernel for this \fITAG\fR (perhaps one built from source, and thus cannot be set using this tool), or removing \fITAG\fR from boot configurations altogether.
 .SH EXIT STATUS
-The exit status is \fB0\fR if all packages were downloaded and verified successfully.
+The exit status is \fB0\fR if all boot configurations were modified successfully.
 Other possible exit statuses are:
 .TP
 .B 1
-Some packages were missing (and not skipped), had a download failure, or verification failure.
+Some specified changes were invalid.
 .TP
-.B 72
-Missing or invalid package meta-data.
-.TP
-.B 73
-Unable to create temporary directory.
+.B 64
+Unknown command line parameter or argument was specified.
 .TP
 .B 78
 Missing or invalid configuration file.
-.SH ENVIRONMENT
 .TP
-.B PKGTOOLS_EXTRAS_CONF
-Overrides the default configuration file location to be used.
+.B *
+Unexpected errors while removing or replacing kernel files, or while running
+.BR mkinitrd (8)
+or
+.BR lilo (8)
+will terminate the application at that point, and will result in exit statuses from those programs.
 .SH FILES
 .TP
-.I /etc/pkgtools\-extras.conf
-Default configuration file.
-For proper operation of
-.BR fetchpkg (8),
-\fBWORKDIR\fR and \fBMIRRORS\fR must be set appropriately.
-Additionally, if \fB\-\-cache\fR is used, \fBCACHEDIR\fR must also be set appropriately.
+.I /etc/lilo.conf
+Default
+.BR lilo (8)
+configuration file.
+Used to determine active boot configurations on non-EFI systems.
 See
-.BR pkgtools\-extras.conf (5)
+.BR lilo.conf (5)
+for details.
+.TP
+.I /boot/efi/EFI/Slackware/elilo.conf
+Default \fBelilo\fR configuration file.
+Used to determine active boot configurations on EFI systems.
+.TP
+.I /etc/mkinitrd.conf
+Default
+.BR mkinitrd (8)
+configuration file.
+Used when rebuilding initrd images, unless \fB\-\-skip\-initrd\fR is specified.
+See
+.BR mkinitrd.conf (5)
 for details.
 .SH BUGS
-There is no locking of the files in the working directory, or the cache directory.
-As a result, multiple instances could interfere with each other.
-Also, if using the same working directory or cache directory as
-.BR slackpkg (8),
-using these tools at the same time could result in unintended behavior.
+There is no locking preventing multiple instances from running at the same time, potentially interferring with each other.
+Does not support
+.B grub
+based systems, though
+.B grub
+has its own helper tools, which should be used instead.
 .SH EXAMPLES
-To fetch a particular kernel version's generic and modules packages to the current working directory:
+To list the current boot configurations we can modify with this tool, and the list of installed but unused kernel packages:
 .PP
 .nf
 .RS 5
-.B fetchpkg kernel\-generic\-5.10.30\-x86_64\-1 kernel\-modules\-5.10.30\-x86_64\-1
+.B boot-select \-\-list \-\-unused
 .RE
 .fi
 .PP
-To fetch a package to the local package cache, without verification, and replace an existing package:
+To set the boot configuration associated with tag \fBlatest\fR to use a particular \fBkernel\-generic\fR package, already installed on the system, and clear the kernel used by the configuration tagged \fBold\fR:
 .PP
 .nf
 .RS 5
-.B fetchpkg \-\-force \-\-cache \-\-no\-verify aaa_libraries\-15.0\-x86_64\-5
+.B boot-select \-\-set latest=kernel\-generic\-5.10.32\-x86_64\-1 \-\-clear old
 .RE
 .fi
 .SH AUTHORS
 .R Jonathan L. Kaus <jlkaus@gmail.com>
 .SH SEE ALSO
-.BR findpkg (8),
-.BR updatepkglists (8),
-.BR pkgtools\-extras.conf (5).
+.BR lilo (8),
+.BR lilo.conf (5),
+.BR mkinitrd (8),
+.BR mkinitrd.conf (5).

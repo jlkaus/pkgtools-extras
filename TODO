@@ -2,8 +2,6 @@ scripts:
 1. Make findpkg a bit more useful to understand upgrades that could happen
 
 man-pages:
-8. create man page for installkernelpkg
-4. create man page for boot-select
 10. update findpkg man page for new selection options
 
 
