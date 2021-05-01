@@ -67,8 +67,14 @@ fi
 SHOW_INFO=
 SHOW_LINK=
 TERSE_MODE=
-STATUS_LIST="installed available"
 REPO_LIST="__unknown__ __available__"
+MODE=flat
+INCLUDE_UNAVAILABLE=
+INCLUDE_UPTODATE=
+INCLUDE_UPGRADES=
+INCLUDE_NEW=
+EXCLUSION_PATTERN=
+BLACKLIST_FILE=
 PATTERN=
 while [ -n "$1" ]; do
     case $1 in
@@ -84,9 +90,41 @@ while [ -n "$1" ]; do
 	    TERSE_MODE=1
 	    shift
 	    ;;
-	--status|-s|--stat|--statuses)
-	    STATUS_LIST=${2//,/ }
+	--actions)
 	    shift
+	    MODE=actions
+	    ;;
+	--include-unavailable)
+	    shift
+	    INCLUDE_UNAVAILABLE=1
+	    ;;
+	--include-uptodate)
+	    shift
+	    INCLUDE_UPTODATE=1
+	    ;;
+	--include-upgrades)
+	    shift
+	    INCLUDE_UPGRADES=1
+	    ;;
+	--include-new)
+	    shift
+	    INCLUDE_NEW=1
+	    ;;
+	--blacklist)
+	    shift
+	    BLACKLIST_FILE=$1
+	    if [ ! -e ${BLACKLIST_FILE} -o ! -f ${BLACKLIST_FILE} -o ! -r ${BLACKLIST_FILE} ]; then
+		abort_clean 66 "Specified blacklist file [${BLACKLIST_FILE}] doesn't exist or is not a readable file."
+	    fi
+	    shift
+	    ;;
+	--exclude)
+	    shift
+	    if [ -n "$EXCLUSION_PATTERN" ]; then
+		EXCLUSION_PATTERN="${EXCLUSION_PATTERN} $1"
+	    else
+		EXCLUSION_PATTERN=$1
+	    fi
 	    shift
 	    ;;
 	--repo|-r|--repositories|--repos)
@@ -108,122 +146,212 @@ done
 REPO_LIST=${REPO_LIST//__available__/${!MIRRORS[@]}}
 REPO_LIST=${REPO_LIST// /|}
 
+if [ "$MODE" = "flat" -a -n "$INCLUDE_UPGRADES" ]; then
+    INCLUDE_UPGRADES=
+fi
+
+if [ -z "$INCLUDE_NEW" -a -z "$INCLUDE_UPGRADES" -a -z "$INCLUDE_UPTODATE" -a -z "$INCLUDE_UNAVAILABLE" ]; then
+    INCLUDE_NEW=1
+    INCLUDE_UPGRADES=1
+    INCLUDE_UPTODATE=1
+    INCLUDE_UNAVAILABLE=1
+fi
+
 TRUE_PATTERN=$(echo $PATTERN |sed -e 's/\+/\\\+/g' -e 's/\./\\\./g' -e 's/ /\|/g')
-
-INCLUDE_INSTALLED=
-INCLUDE_AVAILABLE=
-for x in $STATUS_LIST; do
-    case $x in
-	i|I|inst|installed|Installed)
-	    INCLUDE_INSTALLED=1
-	    ;;
-	a|A|avail|available|Available)
-	    INCLUDE_AVAILABLE=1
-	    ;;
-	*)
-	    warn_msg "Ignoring unknown STATUS selector: $x"
-	    ;;
-    esac
-done
-
-#echo "WORKDIR=$WORKDIR"
-#echo "MIRRORS="
-#for x in "${!MIRRORS[@]}"; do
-#    echo "    $x ${MIRRORS[$x]}"
-#done
-#echo "SHOW_INFO=$SHOW_INFO"
-#echo "INCLUDE_INSTALLED=$INCLUDE_INSTALLED"
-#echo "INCLUDE_AVAILABLE=$INCLUDE_AVAILABLE"
-#echo "REPO_LIST=$REPO_LIST"
-#echo "PATTERN=$PATTERN"
-#echo "TRUE_PATTERN=$TRUE_PATTERN"
-#echo
+TRUE_EXCLUDE=$(echo $EXCLUSION_PATTERN |sed -e 's/\+/\\\+/g' -e 's/\./\\\./g' -e 's/ /\|/g')
 
 # Note: If PATTERN is an empty string, all packages will be returned, but if STATUS_LIST or REPO_LIST are empty,
 # none of the PATTERN-matching packages will match the filter criteria, returning an empty list.
 
+#echo "[$TRUE_PATTERN]"
+#echo "[$TRUE_EXCLUDE]"
 # By default, just displays, for each result:
 # install-status source-repo packagename
 # If --info specified, also dumps out the slackdesc info for that package, after the above.
 
+DOEXCLUDE=
+if [ -n "$TRUE_EXCLUDE" ]; then
+    DOEXCLUDE="&& !/$TRUE_EXCLUDE/"
+fi
+
 MATCHING_PKGS=$(
-    ( cat ${WORKDIR}/pkglist;
-      find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -printf '%f\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,"ver","arch","build",$2,"path","ext"}'
-    ) | awk "\$2~/$TRUE_PATTERN/ { print \$6 }" |sort |uniq
+    ( awk '{print $2}' ${WORKDIR}/pkglist;
+      find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -printf '%f\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1/'
+    ) | awk "/$TRUE_PATTERN/ ${DOEXCLUDE} { print }" |sort |uniq
 	     )
+if [ -n "$BLACKLIST_FILE" ]; then
+    MATCHING_PKGS=$( echo "$MATCHING_PKGS" | grep -v -x -E -s -f $BLACKLIST_FILE )
+fi
 
 for x in ${MATCHING_PKGS}; do
-    PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${x}\" { print \$1,\$7,\$6,\$8; exit }" ) )
-    AREPO=${PKG_DATA[0]}
-    ISTATE=avail
-    if [ -e "${PKGTOOLS_INSTALLED_PKGS_DIR}/${x}" ]; then
-	ISTATE=inst
-    fi
-    if [ -z "$AREPO" ]; then
-	AREPO=__unknown__
-	REMOTE_PATH="__unknown__"
-	DIRECT_LINK="__unknown__"
-    else
-	MIRROR=${MIRRORS[$AREPO]}
-	LOCAL_PATH=${PKG_DATA[1]}
-	REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$AREPO\\///")
-	PKGNAME="${PKG_DATA[2]}.${PKG_DATA[3]}"
-	DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
-    fi
+    AVAIL_PKGS=$(awk "\$2==\"${x}\" { print \$1, \$2, \$6, \$7, \$8; } " ${WORKDIR}/pkglist)
+    INST_PKGS=$(find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -name "${x}-*" -printf '%f\n' |sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,$2,"path","ext"}')
 
-    if [ -n "$INCLUDE_INSTALLED" -a "$ISTATE" = "inst" ] || [ -n "$INCLUDE_AVAILABLE" -a "$ISTATE" = "avail" ]; then
-	if echo "$AREPO" |grep -E -s -q -e "^${REPO_LIST}\$"; then
-	    if [ -n "$SHOW_INFO" ]; then
-		echo "PACKAGE_NAME: $x"
-		echo "PACKAGE_LOCATION: $REMOTE_PATH"
-		echo "REPOSITORY: $AREPO"
-		echo "DIRECT_LINK: $DIRECT_LINK"
-		if [ "$ISTATE" = "inst" ]; then
-		    # For installed packages, the slack-desc should be in the package file
-		    # in /var/lib/pkgtools/packages/PKGNAME:
-		    # ...
-		    # PACKAGE DESCRIPTION:
-		    # {print}
-		    # FILE LIST:
-		    # {exit}
-		    echo "STATUS: Installed"
-		    echo "PACKAGE_DESCRIPTION:"
-		    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' ${PKGTOOLS_INSTALLED_PKGS_DIR}/${x}
-		    echo
-		    
-		else
-		    # For packages that are not installed, we'll have to look in PACKAGES.TXT
-		    # {ignore}
-		    # PACKAGE NAME: PKGNAME.ext
-		    # {ignore}
-		    # PACKAGE DESCRIPTION:
-		    # {print}
-		    # <BLANK>
-		    # {exit}
-		    echo "STATUS: Available"
-		    echo "PACKAGE_DESCRIPTION:"
-		    awk "doprint && /^\$/ {exit} doprint {print} isfound && /^PACKAGE DESCRIPTION:\$/ {doprint=1} /^PACKAGE NAME: +${x}\.t..\$/ {isfound=1}" ${WORKDIR}/PACKAGES.TXT
-		    echo
-		fi
-	    else
-		if [ -n "$TERSE_MODE" ]; then
-		    if [ -z "$SHOW_LINK" ]; then
-			echo $x
-		    else
-			if [ "$DIRECT_LINK" != "__unknown__" ]; then
-			    echo $DIRECT_LINK
-			fi
+    if [ "$MODE" = "flat" ]; then
+	declare -A DISPLAYED
+	DISPLAYED=()
+	while read -r repo short pkg path ext; do
+	    if [ -n "$repo" -a "$short" = "${x}" ]; then
+		if [ -z "${DISPLAYED[$pkg]}" ]; then
+#		    echo "$repo $vers $pkg $path $ext"
+		    DISPLAYED[$pkg]=1
+
+
+		    PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${pkg}\" { print \$1,\$7,\$6,\$8; exit }" ) )
+
+		    AREPO=${PKG_DATA[0]}
+		    ISTATE=avail
+		    if [ -e "${PKGTOOLS_INSTALLED_PKGS_DIR}/${pkg}" ]; then
+			ISTATE=inst
 		    fi
-		else
-		    if [ -n "$SHOW_LINK" ]; then
-			printf "%-6s %-26s %-22s %-40s %s\n" $ISTATE $AREPO $REMOTE_PATH $x $DIRECT_LINK
+		    if [ -z "$AREPO" ]; then
+			AREPO=__unknown__
+			REMOTE_PATH="__unknown__"
+			DIRECT_LINK="__unknown__"
 		    else
-			printf "%-6s %-26s %-22s %s\n" $ISTATE $AREPO $REMOTE_PATH $x
+			MIRROR=${MIRRORS[$AREPO]}
+			LOCAL_PATH=${PKG_DATA[1]}
+			REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$AREPO\\///")
+			PKGNAME="${PKG_DATA[2]}.${PKG_DATA[3]}"
+			DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
+		    fi
+
+		    if [ -n "$INCLUDE_UNAVAILABLE" -a "$ISTATE" = "inst" -a "$AREPO" = "__unknown__" ] ||
+			   [ -n "$INCLUDE_NEW" -a "$ISTATE" = "avail" ] ||
+			   [ -n "$INCLUDE_UPTODATE" -a "$ISTATE" = "inst" -a "$AREPO" != "__unknown__" ]; then
+			if echo "$AREPO" |grep -E -s -q -e "^${REPO_LIST}\$"; then
+			    if [ -n "$SHOW_INFO" ]; then
+				echo "PACKAGE_NAME: $pkg"
+				echo "PACKAGE_LOCATION: $REMOTE_PATH"
+				echo "REPOSITORY: $AREPO"
+				echo "DIRECT_LINK: $DIRECT_LINK"
+				if [ "$ISTATE" = "inst" ]; then
+				    # For installed packages, the slack-desc should be in the package file
+				    # in /var/lib/pkgtools/packages/PKGNAME:
+				    # ...
+				    # PACKAGE DESCRIPTION:
+				    # {print}
+				    # FILE LIST:
+				    # {exit}
+				    echo "STATUS: Installed"
+				    echo "PACKAGE_DESCRIPTION:"
+				    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' ${PKGTOOLS_INSTALLED_PKGS_DIR}/${pkg}
+				    echo
+		    
+				else
+				    # For packages that are not installed, we'll have to look in PACKAGES.TXT
+				    # {ignore}
+				    # PACKAGE NAME: PKGNAME.ext
+				    # {ignore}
+				    # PACKAGE DESCRIPTION:
+				    # {print}
+				    # <BLANK>
+				    # {exit}
+				    echo "STATUS: Available"
+				    echo "PACKAGE_DESCRIPTION:"
+				    awk "doprint && /^\$/ {exit} doprint {print} isfound && /^PACKAGE DESCRIPTION:\$/ {doprint=1} /^PACKAGE NAME: +${pkg}\.t..\$/ {isfound=1}" ${WORKDIR}/PACKAGES.TXT
+				    echo
+				fi
+			    else
+				if [ -n "$TERSE_MODE" ]; then
+				    if [ -z "$SHOW_LINK" ]; then
+					echo $pkg
+				    else
+					if [ "$DIRECT_LINK" != "__unknown__" ]; then
+					    echo $DIRECT_LINK
+					fi
+				    fi
+				else
+				    if [ -n "$SHOW_LINK" ]; then
+					printf "%-6s %-40s %-26s %s\n" $ISTATE $pkg $AREPO $DIRECT_LINK
+				    else
+					printf "%-6s %-40s %-26s\n" $ISTATE $pkg $AREPO
+				    fi
+				fi
+			    fi
+			fi
 		    fi
 		fi
 	    fi
+	done <<< "$INST_PKGS"$'\n'"$AVAIL_PKGS"
+    else
+	INSTALLED=
+	while read -r repo short pkg path ext; do
+	    if [ -n "$repo" -a "$short" = "${x}" ]; then
+		INSTALLED=1
+
+		EXACT_REPO=
+#		EXACT_LINK=
+		UPGRADES=
+		while read -r arepo ashort apkg apath aext; do
+		    if [ -n "$arepo" -a "$ashort" = "${x}" ] && echo "$arepo" |grep -E -s -q -e "^${REPO_LIST}\$"; then
+
+			MIRROR=${MIRRORS[$arepo]}
+			LOCAL_PATH=$apath
+			REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$arepo\\///")
+			PKGNAME="${apkg}.${aext}"
+			DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
+
+			if [ "$pkg" = "$apkg" ]; then
+			    EXACT_REPO=$arepo
+#			    EXACT_LINK=${DIRECT_LINK}
+			else
+			    UPGRADES="$UPGRADES $arepo:$apkg"
+#			    if [ -n "$SHOW_LINK" ]; then
+#				UPGRADES="$UPGRADES:$DIRECT_LINK"
+#			    fi
+			fi
+		    fi
+		done <<< "$AVAIL_PKGS"
+
+		action=
+		from=$EXACT_REPO
+#		if [ -n "$SHOW_LINK" ]; then
+#		    from="${from}:$EXACT_LINK"
+#		fi
+		if [ -n "$UPGRADES" ]; then
+		    action=upgrade
+		elif [ -n "$EXACT_REPO" ]; then
+		    action=uptodate
+		else
+		    action=unavailable
+		fi
+		
+		if [ "$action" = "upgrade" -a -n "$INCLUDE_UPGRADES" ] ||
+		       [ "$action" = "uptodate" -a -n "$INCLUDE_UPTODATE" ] ||
+		       [ "$action" = "unavailable" -a -n "$INCLUDE_UNAVAILABLE" ]; then
+		    printf "%-12s %-40s %s" "$action" "$pkg" "[$from]"
+		    if [ -n "$UPGRADES" ]; then
+			for y in $UPGRADES; do
+			    echo -n " $y"
+			done
+		    fi
+		    echo
+		fi
+	    fi
+	done <<< "$INST_PKGS"
+
+	if [ -z "$INSTALLED" -a -n "$INCLUDE_NEW" ]; then
+	    while read -r arepo ashort apkg apath aext; do
+		if [ -n "$arepo" -a "$ashort" = "${x}" ] && echo "$arepo" |grep -E -s -q -e "^${REPO_LIST}\$"; then
+		    MIRROR=${MIRRORS[$arepo]}
+		    LOCAL_PATH=$apath
+		    REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$arepo\\///")
+		    PKGNAME="${apkg}.${aext}"
+		    DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
+
+		    action=new
+		    from=$arepo
+#		    if [ -n "$SHOW_LINK" ]; then
+#			from="${from}:$DIRECT_LINK"
+#		    fi
+
+		    printf "%-12s %-40s %s\n" "$action" "$apkg" "[$from]"
+		fi
+	    done <<< "$AVAIL_PKGS"
 	fi
     fi
+
 done
 
 cleanup
