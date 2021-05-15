@@ -1,357 +1,618 @@
-#!/bin/bash
+#!/usr/bin/perl
 
-TMPDIR=
-function cleanup() {
-    if [ -n "$TMPDIR" ]; then
-	rm -rf $TMPDIR
-    fi
+use strict;
+use warnings;
+use IPC::Open2;
+
+    
+# --blacklist FILE
+# --exclude PATTERN
+# PATTERN
+# --repositories REPOLIST
+
+# --by-package (default)
+# --by-version
+
+# --no-new, --installed
+# --no-unavailable, --available
+# --no-upgrades
+# --no-uptodate
+# --upgrades-only is a synonym of --no-new, --no-unavailable, --no-uptodate
+# --uptodate-only is a synonym of --no-new, --no-unavailable, --no-upgrades
+# --unavailable-only is a synonym of --no-new, --no-upgrades, --no-uptodate
+# --new-only is a synonym of --no-unavailable, --no-upgrades, --no-uptodate
+# Note that these only apply when choosing the list of packages to iterate through, not when iterating through the display format strings.
+
+# --info
+# --display FORMAT
+# FORMAT string can include:
+# %p -- full package name/version/build combo (only relevant for --by-version)
+# %v -- version (only relevant for --by-version)
+# %b -- build (only relevant for --by-version)
+# %d -- directory
+# %r -- source repo
+# %l -- download link
+# %m -- package arch (only relevant for --by-version)
+# %i{}{} -- installed packages * See notes
+# %a{}{} -- available packages * See notes
+# %n -- short name
+# %s -- availability status
+# When using --by-version:
+#  p,v,b,r,l,m,d refer to the current package version being listed.  For unavailable versions, r, l, and d will be __unknown__ or - or something.
+#  i{} and a{} won't work.
+# When using --by-package:
+#  p,v,b,r,l,m,d will only work inside %i or %a groups.
+#  i{} will resolve to all installed versions of the package, if any
+#  a{} will resolve to all available versions of the package, if any
+# Inside the a{} or i{} groups, all characters inside the first {} will be used to separate multiple results.
+# The string inside the second {} will be treated as a new format pattern, applied per-package-version-instance for the current group, in which
+#  p, v, b, r, l, m, d, etc, will apply to the exact instance.
+
+# The default when --by-package is used would be:
+# %-8s %n (%i{ }{%r:%p}) (%a{ }{%r:%p})
+# The default when --by-version is used would be:
+# %-8s %r %p
+# If --terse is specified, the defaults change to just:
+# %n (for --by-package)
+# %p (for --by-version)
+# If --link is specified, the defaults change to just:
+# %l (for --by-version)
+# %a{ }{%l} (for --by-package. Some lines may have multiple links for cases with multiple available versions.)
+
+
+my $BLACKLIST=undef;
+my $SHOW_INFO=undef;
+my $SHOW_TERSE=undef;
+my $SHOW_LINK=undef;
+my $FOCUS="package";
+my $INCLUDE_STATUSES={new=>1, unavail=>1, uptodate=>1, upgrades=>1};
+my $EXCLUDE_PATTERNS="";
+my $INCLUDE_PATTERNS="";
+my $REPOLIST="";
+my $DISPLAY_FORMAT=undef;
+
+while ($_=shift @ARGV) {
+    last if !defined;
+    if(/^--blacklist$/) {
+	$BLACKLIST=shift @ARGV;
+    } elsif(/^--exclude$/) {
+	my $p = shift @ARGV;
+	$EXCLUDE_PATTERNS.=" $p";
+    } elsif(/^--no-new$/ || /^--installed$/) {
+	$INCLUDE_STATUSES->{new} = undef;
+    } elsif(/^--no-unavailable$/ || /^--available$/) {
+	$INCLUDE_STATUSES->{unavail} = undef;
+    } elsif(/^--no-uptodate$/) {
+	$INCLUDE_STATUSES->{uptodate} = undef;
+    } elsif(/^--no-upgrades$/) {
+	$INCLUDE_STATUSES->{upgrades} = undef;
+    } elsif(/^--new-only$/) {
+	$INCLUDE_STATUSES->{upgrades} = undef;
+	$INCLUDE_STATUSES->{uptodate} = undef;
+	$INCLUDE_STATUSES->{unavail} = undef;
+    } elsif(/^--upgrades-only$/) {
+	$INCLUDE_STATUSES->{new} = undef;
+	$INCLUDE_STATUSES->{uptodate} = undef;
+	$INCLUDE_STATUSES->{unavail} = undef;
+    } elsif(/^--uptodate-only$/) {
+	$INCLUDE_STATUSES->{upgrades} = undef;
+	$INCLUDE_STATUSES->{new} = undef;
+	$INCLUDE_STATUSES->{unavail} = undef;
+    } elsif(/^--unavailable-only$/) {
+	$INCLUDE_STATUSES->{upgrades} = undef;
+	$INCLUDE_STATUSES->{uptodate} = undef;
+	$INCLUDE_STATUSES->{new} = undef;
+    } elsif(/^--link$/ || /^-l$/ || /^--show-link$/) {
+	$SHOW_LINK = 1;
+    } elsif(/^--info$/ || /^-i$/ || /^--show-info$/) {
+	$SHOW_INFO = 1;
+    } elsif(/^--terse$/ || /^-t$/) {
+	$SHOW_TERSE = 1;
+    } elsif(/^--display$/ || /^-d$/ || /^-o$/ || /^-f$/) {
+	$DISPLAY_FORMAT = shift @ARGV;
+    } elsif(/^--repositories$/ || /^--repos$/ || /^--repo$/ || /^-r$/) {
+	my $p = shift @ARGV;
+	$p =~ s/,/ /g;
+	$REPOLIST.=" $p";
+    } elsif(/^--by-package$/ || /^-p$/) {
+	$FOCUS="package";
+    } elsif(/^--by-version$/ || /^-v$/) {
+	$FOCUS = "version";
+    } else {
+	my $p = $_;
+	$INCLUDE_PATTERNS.=" $p";
+    }
 }
 
-function warn_msg() {
-    echo "*** WARN: " "$@" >&2
+
+my $CONFIG={};
+my $PKGTOOLS_EXTRAS_CONF=$ENV{PKGTOOLS_EXTRAS_CONF} || "/etc/pkgtools-extras.conf";
+if(!-e $PKGTOOLS_EXTRAS_CONF || !-r $PKGTOOLS_EXTRAS_CONF) {
+    die "ERROR: Unable to find or read config file [$PKGTOOLS_EXTRAS_CONF]\n";
 }
 
-function error_msg() {
-    echo "*** ERROR: " "$@" >&2
+open my $cfgfh, "<$PKGTOOLS_EXTRAS_CONF";
+while(<$cfgfh>) {
+    chomp;
+    if(/^\s*(?:#.*)?$/) {
+	#ignore
+    } elsif(/^([^=\s]+)\s*=\s*"?(.*?)"?\s*$/) {
+	my $key = $1;
+	my $val = $2;
+
+	if($val =~ /\$\{([^\}]+)\}/) {
+	    my $lookup=$1;
+	    $val =~ s/\$\{$lookup\}/$CONFIG->{$lookup}/g;
+	}
+	
+	if($key =~ /^([^\[\]]+)\['?([^\[\]']+)'?\]$/) {
+	    my $akey=$1;
+	    my $kkey = $2;
+	    $CONFIG->{$akey} = {} if !defined $CONFIG->{$akey};
+	    $CONFIG->{$akey}->{$kkey} = $val;
+	    #		print("CONFIG->$akey->$kkey = $val\n");
+	} else {
+	    $CONFIG->{$key} = $val;
+	    #		print("CONFIG->$key = $val\n");
+	}
+    }
+
+}
+close($cfgfh);
+
+my $all_repos = join(' ',keys %{$CONFIG->{MIRRORS}});
+$REPOLIST = "__available__" if $REPOLIST eq "";
+$REPOLIST =~ s/__available__/$all_repos/g;
+$REPOLIST =~ s/^\s*//;
+$REPOLIST =~ s/\s*$//;
+my %repo_mask = ();
+foreach(split ' ',$REPOLIST) {
+    $repo_mask{$_} = 1;
 }
 
-function abort_clean() {
-    exit_status=$1
-    shift
-    error_msg "$@"
-    cleanup
-    exit ${exit_status}
+if(!defined $DISPLAY_FORMAT) {
+    if($FOCUS eq "package") {
+	if(defined $SHOW_LINK) {
+	    $DISPLAY_FORMAT = "%a{ }{%l}";
+	} elsif(defined $SHOW_TERSE) {
+	    $DISPLAY_FORMAT = "%n";
+	} else {
+	    $DISPLAY_FORMAT = "%-8s %-40n (%i{ }{%r:%p}) (%a{ }{%r:%p})";
+	}
+    } else {
+	if(defined $SHOW_LINK) {
+	    $DISPLAY_FORMAT = "%l";
+	} elsif(defined $SHOW_TERSE) {
+	    $DISPLAY_FORMAT = "%p";
+	} else {
+	    $DISPLAY_FORMAT = "%-8s %-26r %p";
+	}
+    }
 }
 
-# config file sourced from ${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}.
-PKGTOOLS_EXTRAS_CONF=${PKGTOOLS_EXTRAS_CONF:-/etc/pkgtools-extras.conf}
-if [ ! -e ${PKGTOOLS_EXTRAS_CONF} ]; then
-    abort_clean 78 "${PKGTOOLS_EXTRAS_CONF} does not exist.  Aborting."
-fi
 
-declare -A MIRRORS
-. ${PKGTOOLS_EXTRAS_CONF}
+$INCLUDE_PATTERNS =~ s/^\s+//;
+$INCLUDE_PATTERNS =~ s/\s+$//;
+$INCLUDE_PATTERNS =~ s/\+/\\\+/g;
+$INCLUDE_PATTERNS =~ s/\./\\\./g;
+$INCLUDE_PATTERNS =~ s/\s+/|/g;
+$EXCLUDE_PATTERNS =~ s/^\s+//;
+$EXCLUDE_PATTERNS =~ s/\s+$//;
+$EXCLUDE_PATTERNS =~ s/\+/\\\+/g;
+$EXCLUDE_PATTERNS =~ s/\./\\\./g;
+$EXCLUDE_PATTERNS =~ s/\s+/|/g;
 
-# Allow WGETFLAGS to be empty, or the MIRRORS to be empty.
-# If WORKDIR or PKGTOOLS_INSTALLED_PKGS_DIR are not set, terminate.
-if [ -z "$WORKDIR" ]; then
-    abort_clean 78 "WORKDIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file.  Aborting."
-fi
-if [ -z "$PKGTOOLS_INSTALLED_PKGS_DIR" ] || ! [ -e $PKGTOOLS_INSTALLED_PKGS_DIR -a -d $PKGTOOLS_INSTALLED_PKGS_DIR ]; then
-    abort_clean 78 "PKGTOOLS_INSTALLED_PKGS_DIR needs to be set in the $PKGTOOLS_EXTRAS_CONF file, and must exist and be a directory.  Aborting."
-fi
+my %type_expand = (a=>"avail",
+		   i=>"installed",
+		   p=>"pkgname",
+		   v=>"version",
+		   b=>"build",
+		   d=>"remote_path",
+		   r=>"repo",
+		   l=>"link",
+		   m=>"arch",
+		   n=>"shortname",
+		   s=>"status");
+my %parsed_patterns = ();
+my $pp = parse_pattern($DISPLAY_FORMAT);
+$parsed_patterns{$DISPLAY_FORMAT} = $pp;
+		   
+sub parse_pattern {
+    my ($p) = @_;
+    my $parsed = [];
+#    print("[$p]\n");
+    my $r = $p;
+    while($r) {
+	if($r =~ /^([^%]*)%(.*)$/) {
+	    my $prefix = $1;
+	    $r = $2;
+	    push @{$parsed}, {type=>"string", content=>$prefix};
+#	    print("  Bare string before replacement specifier: [$prefix]\n");
+	    
+	    if($r =~ /^([%{}])(.*)$/) {
+		# Escaping replacement specifier
+		my $content = $1;
+		$r = $2;
+#		print("  Escaping replacement specifier [$content]\n");
+		push @{$parsed}, {type=>"string", content=>$content};
+	    } elsif($r =~ /^((-)?([[:digit:]]+)?(\.([[:digit:]]+))?)([pvbdrlmnsai])(.*)$/) {
+		my $formatting = $1;
+		my $type = $6;
+		$r = $7;
 
-if [ ! -e "${WORKDIR}/pkglist" -o ! -e "${WORKDIR}/PACKAGES.TXT" ]; then
-    abort_clean 72 "No pkglist (or PACKAGES.TXT) found in ${WORKDIR}.  Please update the pkglist."
-fi
+		if($type eq "a" || $type eq "i") {
+		    # Recursive replacement specifier
+		    my $separator = undef;
+		    my $subpattern = undef;
+		    # If next character is not a {, use the next character directly for the separator.  Otherwise, look for matching } (unescaped)
+		    # No need to look for embedded {} groups in here, as they would have no meaning and should be escaped.
+		    if(substr($r, 0, 1) eq "{") {
+			my $ind = index($r, "}", 1);
+			while($ind != -1) {
+			    my $stuff = substr($r, 1, $ind - 1);
+#			    print "[$stuff]\n";
+			    if($stuff =~ /^(?:%%)*%$/ || $stuff =~ /[^%](?:%%)*%$/){
+#				print "  Not here! Escaped }\n";
+			    } else {
+				$separator = $stuff;
+				last;
+			    }
+			    $ind = index($r, "}", $ind + 1);
+			}
+			if($ind != -1) {
+			    # Closing bracket found.
+			    $r = substr($r, $ind + 1);
+			} else {
+			    # No closing bracket.  Assume rest of string is the separator...
+			    $separator = substr($r, 1);
+			    $r = "";
+			}
 
+			$separator =~ s/%([}{%])/$1/g;
+		    } else {
+			$separator = substr($r, 0, 1);
+			$r = substr($r, 1);
+		    }
 
+		    # Now, look for the subpattern.  A single character subpattern doesn't make sense, but we'll say that's what is assumed if there
+		    # is no { next.
+		    if(substr($r, 0, 1) eq "{") {
+			# Ok, again, look for the closing bracket, ignoring escaped ones.  Subpatterns with recursive replacement specifications in them are not supported, and will be ignored...
+			my $ind = index($r, "}", 1);
+			while($ind != -1) {
+			    my $stuff = substr($r, 1, $ind - 1);
+#			    print "[$stuff]\n";
+			    if($stuff =~ /^(?:%%)*%$/ || $stuff =~ /[^%](?:%%)*%$/){
+#				print "  Not here! Escaped }\n";
+			    } else {
+				$subpattern = $stuff;
+				last;
+			    }
+			    $ind = index($r, "}", $ind + 1);
+			}
+			if($ind != -1) {
+			    # Closing bracket found.
+			    $r = substr($r, $ind + 1);
+			} else {
+			    # No closing bracket.  Assume rest of string is the subpattern...
+			    $subpattern = substr($r, 1);
+			    $r = "";
+			}
+		    } else {
+			$subpattern = substr($r, 0, 1);
+			$r = substr($r, 1);
+		    }
 
-# options:
-#   --info: Show the slack-desc for each package (from PACKAGES.TXT or the installed package file)
-#   --link: Show the direct download link for each package, if known.  Note that this is already included
-#           for --info.
-#   --status=STATUSLIST: Filter the results by install-status (or a comma-separated list of install-statuses):
-#           installed (or inst or i)
-#           available (or avail or a)
-#           Default STATUSLIST is installed,available
-#   --repo=REPOLIST: Filter the results based on which repo the package is from. By default, all repos
-#           are accepted.  The special repo "__unknown__" is used when a package is only installed locally,
-#           but is not available upstream (currently).  The special repo "__available__" can be used to select
-#           packages available at some upstream repo (thus excluding packages installed locally but not
-#           currently available upstream).  Default REPOLIST is __unknown__,__available__
-#
-# arguments:
-#   PATTERN: swizzled before using as grep to the pkglist and the installed packages names
+		    push @{$parsed}, {type=>$type_expand{$type}, fmt=>$formatting, sep=>$separator, subpattern=>$subpattern};
 
-SHOW_INFO=
-SHOW_LINK=
-TERSE_MODE=
-REPO_LIST="__unknown__ __available__"
-MODE=flat
-INCLUDE_UNAVAILABLE=
-INCLUDE_UPTODATE=
-INCLUDE_UPGRADES=
-INCLUDE_NEW=
-EXCLUSION_PATTERN=
-BLACKLIST_FILE=
-PATTERN=
-while [ -n "$1" ]; do
-    case $1 in
-	--info|-i)
-	    SHOW_INFO=1
-	    shift
-	    ;;
-	--link|-l)
-	    SHOW_LINK=1
-	    shift
-	    ;;
-	--terse|-t)
-	    TERSE_MODE=1
-	    shift
-	    ;;
-	--actions)
-	    shift
-	    MODE=actions
-	    ;;
-	--include-unavailable)
-	    shift
-	    INCLUDE_UNAVAILABLE=1
-	    ;;
-	--include-uptodate)
-	    shift
-	    INCLUDE_UPTODATE=1
-	    ;;
-	--include-upgrades)
-	    shift
-	    INCLUDE_UPGRADES=1
-	    ;;
-	--include-new)
-	    shift
-	    INCLUDE_NEW=1
-	    ;;
-	--blacklist)
-	    shift
-	    BLACKLIST_FILE=$1
-	    if [ ! -e ${BLACKLIST_FILE} -o ! -f ${BLACKLIST_FILE} -o ! -r ${BLACKLIST_FILE} ]; then
-		abort_clean 66 "Specified blacklist file [${BLACKLIST_FILE}] doesn't exist or is not a readable file."
-	    fi
-	    shift
-	    ;;
-	--exclude)
-	    shift
-	    if [ -n "$EXCLUSION_PATTERN" ]; then
-		EXCLUSION_PATTERN="${EXCLUSION_PATTERN} $1"
-	    else
-		EXCLUSION_PATTERN=$1
-	    fi
-	    shift
-	    ;;
-	--repo|-r|--repositories|--repos)
-	    REPO_LIST=${2//,/ }
-	    shift
-	    shift
-	    ;;
-	*)
-	    if [ -n "$PATTERN" ]; then
-		PATTERN="$PATTERN $1"
-	    else
-		PATTERN=$1
-	    fi
-	    shift
-	    ;;
-    esac
-done
-
-REPO_LIST=${REPO_LIST//__available__/${!MIRRORS[@]}}
-REPO_LIST=${REPO_LIST// /|}
-
-if [ "$MODE" = "flat" -a -n "$INCLUDE_UPGRADES" ]; then
-    INCLUDE_UPGRADES=
-fi
-
-if [ -z "$INCLUDE_NEW" -a -z "$INCLUDE_UPGRADES" -a -z "$INCLUDE_UPTODATE" -a -z "$INCLUDE_UNAVAILABLE" ]; then
-    INCLUDE_NEW=1
-    INCLUDE_UPGRADES=1
-    INCLUDE_UPTODATE=1
-    INCLUDE_UNAVAILABLE=1
-fi
-
-TRUE_PATTERN=$(echo $PATTERN |sed -e 's/\+/\\\+/g' -e 's/\./\\\./g' -e 's/ /\|/g')
-TRUE_EXCLUDE=$(echo $EXCLUSION_PATTERN |sed -e 's/\+/\\\+/g' -e 's/\./\\\./g' -e 's/ /\|/g')
-
-# Note: If PATTERN is an empty string, all packages will be returned, but if STATUS_LIST or REPO_LIST are empty,
-# none of the PATTERN-matching packages will match the filter criteria, returning an empty list.
-
-#echo "[$TRUE_PATTERN]"
-#echo "[$TRUE_EXCLUDE]"
-# By default, just displays, for each result:
-# install-status source-repo packagename
-# If --info specified, also dumps out the slackdesc info for that package, after the above.
-
-DOEXCLUDE=
-if [ -n "$TRUE_EXCLUDE" ]; then
-    DOEXCLUDE="&& !/$TRUE_EXCLUDE/"
-fi
-
-MATCHING_PKGS=$(
-    ( awk '{print $2}' ${WORKDIR}/pkglist;
-      find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -printf '%f\n' | sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1/'
-    ) | awk "/$TRUE_PATTERN/ ${DOEXCLUDE} { print }" |sort |uniq
-	     )
-if [ -n "$BLACKLIST_FILE" ]; then
-    MATCHING_PKGS=$( echo "$MATCHING_PKGS" | grep -v -x -E -s -f $BLACKLIST_FILE )
-fi
-
-for x in ${MATCHING_PKGS}; do
-    AVAIL_PKGS=$(awk "\$2==\"${x}\" { print \$1, \$2, \$6, \$7, \$8; } " ${WORKDIR}/pkglist)
-    INST_PKGS=$(find ${PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -name "${x}-*" -printf '%f\n' |sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*$/\1 &/' | awk '{print "__unknown__",$1,$2,"path","ext"}')
-
-    if [ "$MODE" = "flat" ]; then
-	declare -A DISPLAYED
-	DISPLAYED=()
-	while read -r repo short pkg path ext; do
-	    if [ -n "$repo" -a "$short" = "${x}" ]; then
-		if [ -z "${DISPLAYED[$pkg]}" ]; then
-#		    echo "$repo $vers $pkg $path $ext"
-		    DISPLAYED[$pkg]=1
-
-
-		    PKG_DATA=( $(cat ${WORKDIR}/pkglist | awk "\$6==\"${pkg}\" { print \$1,\$7,\$6,\$8; exit }" ) )
-
-		    AREPO=${PKG_DATA[0]}
-		    ISTATE=avail
-		    if [ -e "${PKGTOOLS_INSTALLED_PKGS_DIR}/${pkg}" ]; then
-			ISTATE=inst
-		    fi
-		    if [ -z "$AREPO" ]; then
-			AREPO=__unknown__
-			REMOTE_PATH="__unknown__"
-			DIRECT_LINK="__unknown__"
-		    else
-			MIRROR=${MIRRORS[$AREPO]}
-			LOCAL_PATH=${PKG_DATA[1]}
-			REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$AREPO\\///")
-			PKGNAME="${PKG_DATA[2]}.${PKG_DATA[3]}"
-			DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
-		    fi
-
-		    if [ -n "$INCLUDE_UNAVAILABLE" -a "$ISTATE" = "inst" -a "$AREPO" = "__unknown__" ] ||
-			   [ -n "$INCLUDE_NEW" -a "$ISTATE" = "avail" ] ||
-			   [ -n "$INCLUDE_UPTODATE" -a "$ISTATE" = "inst" -a "$AREPO" != "__unknown__" ]; then
-			if echo "$AREPO" |grep -E -s -q -e "^${REPO_LIST}\$"; then
-			    if [ -n "$SHOW_INFO" ]; then
-				echo "PACKAGE_NAME: $pkg"
-				echo "PACKAGE_LOCATION: $REMOTE_PATH"
-				echo "REPOSITORY: $AREPO"
-				echo "DIRECT_LINK: $DIRECT_LINK"
-				if [ "$ISTATE" = "inst" ]; then
-				    # For installed packages, the slack-desc should be in the package file
-				    # in /var/lib/pkgtools/packages/PKGNAME:
-				    # ...
-				    # PACKAGE DESCRIPTION:
-				    # {print}
-				    # FILE LIST:
-				    # {exit}
-				    echo "STATUS: Installed"
-				    echo "PACKAGE_DESCRIPTION:"
-				    awk 'doprint && /^FILE LIST:$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:$/ {doprint=1} ' ${PKGTOOLS_INSTALLED_PKGS_DIR}/${pkg}
-				    echo
+		    if(!defined $parsed_patterns{$subpattern}) {
+			parse_pattern($subpattern);
+		    }
 		    
-				else
-				    # For packages that are not installed, we'll have to look in PACKAGES.TXT
-				    # {ignore}
-				    # PACKAGE NAME: PKGNAME.ext
-				    # {ignore}
-				    # PACKAGE DESCRIPTION:
-				    # {print}
-				    # <BLANK>
-				    # {exit}
-				    echo "STATUS: Available"
-				    echo "PACKAGE_DESCRIPTION:"
-				    awk "doprint && /^\$/ {exit} doprint {print} isfound && /^PACKAGE DESCRIPTION:\$/ {doprint=1} /^PACKAGE NAME: +${pkg}\.t..\$/ {isfound=1}" ${WORKDIR}/PACKAGES.TXT
-				    echo
-				fi
-			    else
-				if [ -n "$TERSE_MODE" ]; then
-				    if [ -z "$SHOW_LINK" ]; then
-					echo $pkg
-				    else
-					if [ "$DIRECT_LINK" != "__unknown__" ]; then
-					    echo $DIRECT_LINK
-					fi
-				    fi
-				else
-				    if [ -n "$SHOW_LINK" ]; then
-					printf "%-6s %-40s %-26s %s\n" $ISTATE $pkg $AREPO $DIRECT_LINK
-				    else
-					printf "%-6s %-40s %-26s\n" $ISTATE $pkg $AREPO
-				    fi
-				fi
-			    fi
-			fi
-		    fi
-		fi
-	    fi
-	done <<< "$INST_PKGS"$'\n'"$AVAIL_PKGS"
-    else
-	INSTALLED=
-	while read -r repo short pkg path ext; do
-	    if [ -n "$repo" -a "$short" = "${x}" ]; then
-		INSTALLED=1
-
-		EXACT_REPO=
-#		EXACT_LINK=
-		UPGRADES=
-		while read -r arepo ashort apkg apath aext; do
-		    if [ -n "$arepo" -a "$ashort" = "${x}" ] && echo "$arepo" |grep -E -s -q -e "^${REPO_LIST}\$"; then
-
-			MIRROR=${MIRRORS[$arepo]}
-			LOCAL_PATH=$apath
-			REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$arepo\\///")
-			PKGNAME="${apkg}.${aext}"
-			DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
-
-			if [ "$pkg" = "$apkg" ]; then
-			    EXACT_REPO=$arepo
-#			    EXACT_LINK=${DIRECT_LINK}
-			else
-			    UPGRADES="$UPGRADES $arepo:$apkg"
-#			    if [ -n "$SHOW_LINK" ]; then
-#				UPGRADES="$UPGRADES:$DIRECT_LINK"
-#			    fi
-			fi
-		    fi
-		done <<< "$AVAIL_PKGS"
-
-		action=
-		from=$EXACT_REPO
-#		if [ -n "$SHOW_LINK" ]; then
-#		    from="${from}:$EXACT_LINK"
-#		fi
-		if [ -n "$UPGRADES" ]; then
-		    action=upgrade
-		elif [ -n "$EXACT_REPO" ]; then
-		    action=uptodate
-		else
-		    action=unavailable
-		fi
+#		    print("  Recursive replacement specifier [$type] [$formatting] [$separator] [$subpattern]\n");
+		} else {
+		    # Non-recursive replacement specifier
+#		    print("  Non-recursive replacement specifier [$type] [$formatting]\n");
+		    push @{$parsed}, {type=>$type_expand{$type}, fmt=>$formatting};
+		}
 		
-		if [ "$action" = "upgrade" -a -n "$INCLUDE_UPGRADES" ] ||
-		       [ "$action" = "uptodate" -a -n "$INCLUDE_UPTODATE" ] ||
-		       [ "$action" = "unavailable" -a -n "$INCLUDE_UNAVAILABLE" ]; then
-		    printf "%-12s %-40s %s" "$action" "$pkg" "[$from]"
-		    if [ -n "$UPGRADES" ]; then
-			for y in $UPGRADES; do
-			    echo -n " $y"
-			done
-		    fi
-		    echo
-		fi
-	    fi
-	done <<< "$INST_PKGS"
+	    } else {
+		# Unknown replacement specifier -- ignore
+		push @{$parsed}, {type=>"string", content=>"%"};
+#		print("  Ignoring unknown replacement specifier.  Adding bare string [%]\n");
+	    }
+	} else {
+	    push @{$parsed}, {type=>"string", content=>$r};
+#	    print "  No remaining replacement specifications: [$r]\n";
+	    $r = "";
+	}
+    }
 
-	if [ -z "$INSTALLED" -a -n "$INCLUDE_NEW" ]; then
-	    while read -r arepo ashort apkg apath aext; do
-		if [ -n "$arepo" -a "$ashort" = "${x}" ] && echo "$arepo" |grep -E -s -q -e "^${REPO_LIST}\$"; then
-		    MIRROR=${MIRRORS[$arepo]}
-		    LOCAL_PATH=$apath
-		    REMOTE_PATH=$(echo "$LOCAL_PATH/" |sed -e "s/^\\.\\/$arepo\\///")
-		    PKGNAME="${apkg}.${aext}"
-		    DIRECT_LINK=${MIRROR}${REMOTE_PATH}${PKGNAME}
 
-		    action=new
-		    from=$arepo
-#		    if [ -n "$SHOW_LINK" ]; then
-#			from="${from}:$DIRECT_LINK"
-#		    fi
+    $parsed_patterns{$p} = $parsed;
+    return $parsed;
+}
 
-		    printf "%-12s %-40s %s\n" "$action" "$apkg" "[$from]"
-		fi
-	    done <<< "$AVAIL_PKGS"
-	fi
-    fi
 
-done
 
-cleanup
+my $avail_pkgs=[];
+my $installed_pkgs = [];
+open my $pkglist, "<$CONFIG->{WORKDIR}/pkglist";
+while(<$pkglist>) {
+    chomp;
+    my ($repo, $short, $ver,$arch,$bld, $pkg,$path,$ext) = split;
+    if(defined $repo_mask{$repo}){
+	my $remote_path = "$path/";
+	$remote_path =~ s/^\.\/${repo}\///;
+	my $link = $CONFIG->{MIRRORS}->{$repo} . $remote_path . $pkg . "." . $ext;
+	push @{$avail_pkgs}, {sources=>[{repo=>$repo, path=>$path, remote_path=>$remote_path, link=>$link, ext=>$ext}], shortname=>$short, version=>$ver, arch=>$arch, build=>$bld, pkgname=>$pkg};
+    }
+}
+close $pkglist;
+
+open my $findpipe, "find $CONFIG->{PKGTOOLS_INSTALLED_PKGS_DIR}/ -type f -printf '%f\n' | ";
+while (<$findpipe>) {
+    chomp;
+    if(/^(.*)-([^-]*)-([^-]*)-([^-]*)$/) {
+	push @{$installed_pkgs}, {shortname=>$1, version=>$2, arch=>$3, build=>$4, pkgname=>$_, installed=>1, sources=>[]};
+    }
+}
+close $findpipe;
+
+my $filter_pipeline = " sed -E -e 's/^(.*)-[^-]*-[^-]*-[^-]*\$/\\1/' |sort -u";
+if($BLACKLIST) {
+    $filter_pipeline = "grep -s -E -v -f <(grep -s -v -E -e '(^[[:blank:]]*#|^[[:blank:]]*\$)' $BLACKLIST) | $filter_pipeline";
+}
+if($EXCLUDE_PATTERNS) {
+    $filter_pipeline = "grep -s -E -v -e '$EXCLUDE_PATTERNS' | $filter_pipeline";
+}
+if($INCLUDE_PATTERNS) {
+    $filter_pipeline = "grep -s -E -e '$INCLUDE_PATTERNS' | $filter_pipeline";
+}
+
+#print "# $filter_pipeline\n";
+# Note this shouldn't deadlock as long as the pipeline ends in a sort (since it has to buffer everything to sort properly)
+my $pid = open2(my $rdr, my $wrt, $filter_pipeline);
+
+my %pkg_data = ();
+foreach(@{$installed_pkgs}, @{$avail_pkgs}) {
+    print $wrt "$_->{pkgname}\n";
+    $pkg_data{$_->{shortname}} = {all=>{}, avail=>{},installed=>{}, shortname=>$_->{shortname}} if !defined $pkg_data{$_->{shortname}};
+    my $p = $pkg_data{$_->{shortname}};
+    my $v = $_;
+    if(!defined $p->{all}->{$_->{pkgname}}) {
+	$p->{all}->{$_->{pkgname}} = $v;
+    } else {
+	$v = $p->{all}->{$_->{pkgname}};
+	push @{$v->{sources}}, @{$_->{sources}};
+	$v->{installed} = 1 if $_->{installed};
+    }
+    $p->{installed}->{$_->{pkgname}} = $_->{pkgname} if $_->{installed};
+    $p->{avail}->{$_->{pkgname}} = $_->{pkgname} if scalar @{$_->{sources}} > 0;
+}
+close($wrt);
+
+my @candl_list = ();
+while(<$rdr>) {
+    chomp;
+    push @candl_list, $_;
+}
+close($rdr);
+
+foreach(@candl_list) {
+    my $pkg = $_;
+    my $pd = $pkg_data{$pkg};
+
+    foreach(keys %{$pd->{all}}) {
+	my $ver = $_;
+	my $vd = $pd->{all}->{$_};
+	if($vd->{installed} && scalar @{$vd->{sources}} == 0) {
+	    $vd->{status} = "unavail";
+	} elsif(!$vd->{installed} && scalar @{$vd->{sources}} > 0) {
+	    $vd->{status} = "new";
+	} elsif($vd->{installed} && scalar @{$vd->{sources}} > 0) {
+	    $vd->{status} = "uptodate";
+	} else {
+	    $vd->{status} = "unknown";
+	    die "ERROR: Odd version-level status for [$ver]: Neither installed or available.\n";
+	}
+    }
+
+    my $some_i = undef;
+    my $some_a = undef;
+    my $some_ia = undef;
+    my $all_ia = 1;
+    my $some_ai = undef;
+    my $all_ai = 1;
+    foreach(keys %{$pd->{installed}}) {
+	my $i = $_;
+	$some_i = 1;
+	if(defined $pd->{avail}->{$i}) {
+	    $some_ia = 1;
+	} else {
+	    $all_ia = undef;
+	}
+    }
+    foreach(keys %{$pd->{avail}}) {
+	my $a = $_;
+	$some_a = 1;
+	if(defined $pd->{installed}->{$a}) {
+	    $some_ai = 1;
+	} else {
+	    $all_ai = undef;
+	}
+    }
+
+    # none_i and none_a -> unknown
+    # none_i and some_a -> new
+    # some_i and none_a -> unavailable
+    # some_i and some_a -> ?
+    #    none_ia and none_ai -> upgrades
+    #    all_ia and all_ai -> uptodate
+    #    all_ia and some_ai -> upgrades?
+    #    some_ia and all_ai -> uptodate?
+    #    some_ia and some_ai -> upgrades?
+    if(!$some_i && $some_a) {
+	$pd->{status} = "new";
+    } elsif($some_i && !$some_a) {
+	$pd->{status} = "unavail";
+    } elsif($some_i && $some_a) {
+	if(!$some_ia && !$some_ai) {
+	    $pd->{status} = "upgrades";
+	    # There are some versions of this package installed and some available, but they don't overlap.
+	    # This is a pretty clear case where there are upgrades available for this package and probably you should upgrade.
+	} elsif($all_ia && $all_ai) {
+	    $pd->{status} = "uptodate";
+	    # All versions of this package we could find availble are installed, and there are no installed ones that aren't available.
+	    # Pretty clearly we're all up-to-date, and nothing to do.
+	} elsif($all_ia && $some_ai) {
+	    $pd->{status} = "upgrades";
+	    # Murkier: While all installed versions of this packages are still available, there are also some different versions available.
+	    # Nominally, we could upgrade?
+	    # This will likely occur when a user doesn't install the kernel in testing, for example.
+	} elsif($some_ia && $all_ai) {
+	    $pd->{status} = "uptodate";
+	    # Murky: All available versions of this package are installed, but there are some installed versions that are no longer available.
+	    # Probably we're intentionally keeping around some older versions of the kernel, for example.
+	    # Nothing to do here, really, other than potentially remove the old versions if no longer required.
+	    # We'll have to call it up-to-date.
+	} elsif($some_ia && $some_ai) {
+	    $pd->{status} = "upgrades";
+	    # Murkiest: While there is some overlap between installed and available package versions, but there are also versions that are installed
+	    # but unavailable, and some that are available but not installed.
+	    # We'll call it upgradeable, because you could install the new versions, but this is getting pretty hard to automatically decide.
+	} else {
+	    $pd->{status} = "unknown";
+	    die "ERROR: Odd package-level status2 for [$pkg]: ($some_i,$some_a,$some_ia,$some_ai,$all_ia,$all_ai)\n";
+	}
+    } else {
+	$pd->{status} = "unknown";
+	die "ERROR: Odd package-level status for [$pkg]: ($some_i,$some_a,$some_ia,$some_ai,$all_ia,$all_ai)\n";
+    }
+}
+
+if($FOCUS eq "package") {
+    # Loop over unique packagenames
+    foreach(@candl_list) {
+	my $pkg = $_;
+	my $pd = $pkg_data{$pkg};
+
+	if(defined $INCLUDE_STATUSES->{$pd->{status}}) {
+	    if($SHOW_INFO) {
+		my $ver = undef;
+		if(scalar keys %{$pd->{installed}}) {
+		    $ver = (sort keys %{$pd->{installed}})[0];
+		} else {
+		    $ver = (sort keys %{$pd->{avail}})[0];
+		}
+		
+		display_info($pkg, $pd, $ver, $pd->{all}->{$ver});
+	    } else {
+		display_package($pd);
+	    }
+	}
+    }
+} else {
+    # Loop over all unique package versions
+    foreach(@candl_list) {
+	my $pkg = $_;
+	my $pd = $pkg_data{$pkg};
+	foreach(sort keys %{$pd->{all}}) {
+	    my $ver = $_;
+	    my $vd = $pd->{all}->{$ver};
+
+	    if(defined $INCLUDE_STATUSES->{$vd->{status}}) {
+		if($SHOW_INFO) {
+		    display_info($pkg, $pd, $ver, $vd);
+		} else {
+		    display_package($vd);
+		}
+	    }
+	}
+    }
+}
+
+exit();
+
+sub display_package {
+    my ($o) = @_;
+
+    print format_string($parsed_patterns{$DISPLAY_FORMAT}, $o);
+    print "\n";
+    
+}
+
+sub display_info {
+    my ($pkg, $pd, $ver, $vd) = @_;
+
+    # If $ver is available, use the packagedata from the PACKAGES.TXT file.
+    # otherwise, assuming $ver is installed, use the packagedata from the installed package file.
+    # If its neither installed nor available, how did we find it at all?  ERROR?
+#    print "Trying to display_info for [$pkg] [$ver]\n";
+
+    my $s = (scalar @{$vd->{sources}} > 0) ? $vd->{sources}->[0] : {};
+    
+    print "PACKAGE_NAME: $vd->{pkgname}\n";
+    print "PACKAGE_LOCATION: ".($s->{remote_path} // "__unknown__")."\n";
+    print "REPOSITORY: ".($s->{repo} // "__unknown__")."\n";
+    print "DIRECT_LINK: ".($s->{link} // "__unknown__")."\n";
+
+    if (-e "$CONFIG->{PKGTOOLS_INSTALLED_PKGS_DIR}/$ver" ) {
+	print "STATUS: Installed\n";
+	print "PACKAGE_DESCRIPTION:\n";
+	system("awk 'doprint && /^FILE LIST:\$/ {exit} doprint {print} /^PACKAGE DESCRIPTION:\$/ {doprint=1} ' $CONFIG->{PKGTOOLS_INSTALLED_PKGS_DIR}/$ver");
+	print "\n";
+    } else {
+	print "STATUS: Available\n";
+	print "PACKAGE_DESCRIPTION:\n";
+	system("awk 'doprint && /^\$/ {exit} doprint {print} isfound && /^PACKAGE DESCRIPTION:\$/ {doprint=1} /^PACKAGE NAME: +${ver}\.t..\$/ {isfound=1}' $CONFIG->{WORKDIR}/PACKAGES.TXT");
+	print "\n";
+    }    
+}
+
+sub format_string {
+    my ($ppo, $o) = @_;
+    my $result = "";
+    foreach(@{$ppo}) {
+	my $t = $_->{type};
+	my $f = $_->{fmt} // "";
+	my $s = $_->{sep} // "";
+	my $p = $_->{subpattern};
+	my $c = $_->{content} // "";
+#	print "Handling [$t][$f]\n";
+	my $sr = "";
+	if($t eq "string") {
+	    $sr = $c;
+	} elsif($t eq "avail" || $t eq "installed") {
+	    my @subresults = ();
+	    if(defined $o->{$t}) {
+		foreach(sort keys %{$o->{$t}}) {
+		    push @subresults, format_string($parsed_patterns{$p}, $o->{all}->{$_});
+		}
+	    } else {
+		push @subresults, format_string($parsed_patterns{$p}, $o);
+	    }	    
+
+	    $sr = join($s, @subresults);
+	} else {
+#	    print "  ".ref($o)."\n";
+#	    if(defined $o->{sources}) {
+#		print "  ".ref($o->{sources})."\n";
+#		print "  ".(scalar @{$o->{sources}})."\n";
+#		print "  ".ref($o->{sources}->[0])."\n";
+#	    }
+	    if(defined $o->{$t}) {
+		$sr = $o->{$t};
+	    } elsif((defined $o->{sources}) && (scalar @{$o->{sources}} > 0) && (defined $o->{sources}->[0]->{$t})) {
+		$sr = $o->{sources}->[0]->{$t};
+	    } else {
+		$sr = "-";
+#		die "Unable to satisfy [$t] replacement.\n";
+	    }
+	}
+
+	$result .= sprintf("%${f}s", $sr);
+    }
+    
+    return $result;
+}
