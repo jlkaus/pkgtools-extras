@@ -3,11 +3,23 @@
 findpkg \- Simplify finding available Slackware packages from remote repositories.
 .SH SYNOPSIS
 .B findpkg
-[\fB\-i\fR, \fB\-\-info\fR]
-[\fB\-l\fR, \fB\-\-link\fR]
+[\fB\-p\fR, \fB\-\-by\-package\fR]
+[\fB\-v\fR, \fB\-\-by\-version\fR]
+[\fB\-r\fR, \fB\-\-repositories\fR, \fB\-\-repos\fR, \fB\-\-repo\fR \fIREPOLIST\fR]
+[\fB\-\-no\-new\fR, \fB\-\-installed\fR]
+[\fB\-\-no\-unavailable\fR, \fB\-\-available\fR]
+[\fB\-\-no\-uptodate\fR]
+[\fB\-\-no\-upgrades\fR]
+[\fB\-\-new\-only\fR]
+[\fB\-\-upgrades\-only\fR]
+[\fB\-\-uptodate\-only\fR]
+[\fB\-\-unavailable\-only\fR]
+[\fB\-l\fR, \fB\-\-link\fR, \fB\-\-show\-link\fR]
+[\fB\-i\fR, \fB\-\-info\fR, \fB\-\-show\-info\fR]
 [\fB\-t\fR, \fB\-\-terse\fR]
-[\fB\-s\fR, \fB\-\-status\fR \fISTATUSLIST\fR]
-[\fB\-r\fR, \fB\-\-repo\fR \fIREPOLIST\fR]
+[\fB\-d\fR, \fB\-o\fR, \fB\-f\fR, \fB\-\-display\fR \fIFORMAT\fR]
+[\fB\-\-blacklist\fR \fIFILE\fR]
+[\fB\-\-exclude\fR \fIPATTERN\fR]
 .IR PATTERNS ...
 .SH DESCRIPTION
 .B findpkg
@@ -20,45 +32,163 @@ to make it easier to find available package versions from remote repositories.
 .PP
 .IR PATTERNS ...
 can be a list of search patterns to look for.
-Only the package name is checked for matches.
+The full package name is checked for matches, but not the remote path (packageset, etc.).
 .SH OPTIONS
 .TP
-.BR \-i ", " \-\-info
-By default, only a single line of concise information is returned for each package found,
-including installation status, source repository, remote path, and the detailed package name and version.
-If \fB\-\-info\fR is specified, for each package found, the full slack-desc for the package is displayed,
-in addition to the concise package information normally displayed, and a full download URI for the package.
+.BR \-p ", " \-\-by\-package
+Specifies to use the \fB\-\-by\-package\fR mode (which is the default),
+indicating that each overall package (regardless of exact version) will occur once in the results,
+and thus displayed on one line in the output (assuming no newlines in the display \fIFORMAT\fR string),
+rather than one result per package-version found.
+.TP
+.BR \-v ", " \-\-by\-version
+Specifies to use the \fB\-\-by\-version\fR mode,
+indicating that each package-version found will be represented/displayed once in the results.
+This is in contrast to the default mode, \fB\-\-by\-package\fR,
+where different versions of the same package would all be lumped together as one result for that package.
+.TP
+.BR \-r ", " \-\-repositories ", " \-\-repos ", " \-\-repo " " \fIREPOLIST\fR
+By default, packages from any configured remote repository (as well as those installed locally) are included in the results.
+If \fB\-\-repositories\fR is specified, only the specified repositories will be considered for package sources, including when finding
+new packages, determining up-to-date status, looking for upgrades, or finding package sources.
+\fIREPOLIST\fR may be a comma separated list of repository names.
+Each repository name must match a key to the \fBMIRRORS\fR array in the
+.BR pkgtools\-extras.conf (8)
+config file, or be the special keyword, \fB__available__\fR, indicating all configured repositories.
+.TP
+.BR \-\-no\-new ", " \-\-installed
+.TP
+.BR \-\-no\-unavailable ", " \-\-available
+.TP
+.BR \-\-no\-uptodate
+.TP
+.BR \-\-no\-upgrades
+.TP
+.BR \-\-new\-only
+.TP
+.BR \-\-upgrades\-only
+.TP
+.BR \-\-uptodate\-only
+.TP
+.BR \-\-unavailable\-only
+By default, all search results will be displayed, regardless of whether the package/version is installed, still available, up-to-date, upgradeable, etc.
+By specifying any of these options, the set of package statuses that will be displayed is restricted.
+They can be used in combination, and the restrictions stack, resulting in (potentially) fewer and fewer results being displayed with each added option.
+Notably, the \fB\-\-*\-only\fR forms are aliases for specifying three \fB\-\-no\-*\fR options, etc.
+See \fBPACKAGE STATUS\fR, below, for more information about the meanings of the various statuses.
+.TP
+.BR \-d ", " \-o ", " \-f ", " \-\-display " " \fIFORMAT\fR
+Overrides the default display format for the results, and specifies to use \fIFORMAT\fR instead.
+The default \fIFORMAT\fR for \fB\-\-by\-package\fR mode is \fB"%-8s %-40n (%i{ }{%r:%p}) (%a{ }{%r:%p})"\fR.
+The default \fIFORMAT\fR for \fB\-\-by\-version\fR mode is \fB"%-8s %-26r %p"\fR.
+See \fBOUTPUT FORMATTING\fR for details of the \fIFORMAT\fR strings.
 .TP
 .BR \-t ", " \-\-terse
-If \fB\-\-terse\fR is specified, just the full package name is displayed for each package.
-If \fB\-\-link\fR is also specified, instead of the package name, just the download link for each package is displayed (if known).
-If \fB\-\-info\fR is also specified, \fB\-\-info\fR output is displayed, and \fB\-\-terse\fR has no effect.
+Instead of displaying the full default \fIFORMAT\fR for each package/version,
+just the full package name (for \fB\-\-by\-version\fR mode),
+or the package short name (for \fB\-\-by\-package\fR mode),
+is displayed.
+If \fB\-\-display\fR or \fB\-\-link\fR is also specified, \fB\-\-terse\fR is ignored.
 .TP
-.BR \-l ", " \-\-link
-By default, a download link for the package is only included with \fB\-\-info\fR, and not the concise results.
-If \fB\-\-link\fR is specified, the concise results include the download URI for the package as well.
-Using \fB\-\-link\fR with \fB\-\-info\fR acts the same as just using \fB\-\-info\fR.
-Using \fB\-\-link\fR with \fB\-\-terse\fR changes the terse display to just be the download link for each package.
+.BR \-l ", " \-\-link ", " \-\-show\-link
+Instead of displaying the full default \fIFORMAT\fR for each package/version,
+just a full download URI for the package is displayed, if available.
+Note that for \fB\-\-by\-package\fR mode, a link to each available package is displayed, separated by spaces.
+If the package is not available anywhere, in \fB\-\-by\-package\fR mode, an empty line is displayed,
+and in \fB\-\-by\-version\fR mode, a single "-" is displayed.
+If \fB\-\-display\fR is also specified, \fB\-\-link\fR is ignored.
 .TP
-.BR \-s ", " \-\-status " " \fISTATUSLIST\fR
-By default, packages that are actually installed, as well as those available in a remote repository, are included in the results.
-If \fB\-\-status\fR is specified, the resulting packages are filtered to only include packages with an installation status in the given comma-separated \fISTATUSLIST\fR.
-The available status keywords are:
-.br
-.in +4
-.BR installed " (or " inst ", " i ", " I ")"
-.br
-.BR available " (or " avail ", " a ", " A ")"
-.in
+.BR \-i ", " \-\-info ", " \-\-show\-info
+Instead of displaying a line of information for each package/version based on the current chosen \fIFORMAT\fR,
+the full \fBslack\-desc\fR for the package is displayed, along with extra lines for other package information,
+including the full download URI for the package, if known (regardless of whether \fB\-\-link\fR was specified).
 .TP
-.BR \-r ", " \-\-repo " " \fIREPOLIST\fR
-By default, packages from any configured remote repository, as well as those only installed locally (that is, not available in any remote repository), are all included in the results.
-If \fB\-\-repo\fR is specified, the resulting packages are filtered to only include packages available from a repository in the given comma-separated \fIREPOLIST\fR.
-The repository names must match the key to the \fBMIRRORS\fR array in the
-.BR pkgtools\-extras.conf (8)
-config file, or be one of the special keywords:
-\fB__unknown__\fR (to indicate a package installed locally but unavailable remotely) or
-\fB__available__\fR (to indicate a package available from any of the configured remote repositories).
+.BR \-\-blacklist " " \fIFILE\fR
+Applies a blacklist \fIFILE\fR to the search results, which is a file containing \fIPATTERN\fR lines, as would be used by \fB\-\-exclude\fR, below.
+Empty lines, or lines beginning with a "#" are ignored, as would be expected.
+Note that lines referring to Slackware packagesets, understood by
+.BR slackpkg (8)
+will not work properly here, but otherwise, normal
+.BR slackpkg (8)
+blacklist files should be expected to work.
+.TP
+.BR \-\-exclude " " \fIPATTERN\fR
+Exclude results matching \fIPATTERN\fR from the displayed results.
+.SH PACKAGE STATUS
+For \fB\-\-by\-package\fR mode, there are four basic statuses:
+.TP
+.B new
+A package available upstream, but not installed.
+.TP
+.B unavailable
+A package installed locally, but with no versions available at any remote repository.
+.TP
+.B uptodate
+A package installed locally, with exactly that package version available at some remote repository.
+.TP
+.B upgrades
+A package installed locally, but with a different version available at a remote repository (the available version may actually be a downgrade of the installed version, but for simplicity, all such cases are refered to as \fBupgrades\fR).
+.P
+For \fB\-\-by\-version\fR mode, the statuses are given from the point of view of each specific version.
+As a result, the \fBupgrades\fR status isn't used at all.
+Any given package version must exactly match between the installed version and an available version to be \fBuptodate\fR.
+Otherwise, it is either \fBnew\fR (if it is not installed locally), or \fBunavailable\fR (if it is not available from some repository).
+.SH OUTPUT FORMATTING
+Unless \fB\-\-info\fR is specified, each result is displayed on a single line according to the current output \fIFORMAT\fR, either the default \fIFORMAT\fR for the chosen mode (\fB\-\-by\-package\fR or \fB\-\-by\-version\fR), the \fB\-\-terse\fR or \fB\-\-link\fR \fIFORMAT\fR for the chosen mode, or the explicitely specified \fIFORMAT\fR given by the \fB\-\-display\fR option.
+.P
+A \fIFORMAT\fR string is similar to a
+.BR printf (3)
+format string, in that it is a string with \fB%\fR sequences that get replaced with other information.
+Characters not part of a \fB%\fR sequence are output directly.
+Each \fB%\fR sequence has an optional prefix section that can contain a "-" flag character, a field width, and/or a precision, which are treated exactly like those forms used for the traditional
+.BR printf (3)
+\fB%s\fR specifier, for strings.  In fact, they are directly passed to
+.BR printf (3)
+as part of a \fB%s\fR specifier.
+Following this prefix section is a single character to indicate what field of the result record should be inserted into the output at that position.
+The possible replacement specifier characters are:
+.TP
+.B p
+The full exact package name for this result.
+.TP
+.B n
+The short package name for this result, without any specific version, architecture, or build tag.
+.TP
+.B v
+The exact version string for this result.
+.TP
+.B m
+The architecture string for this result.
+.TP
+.B b
+The build tag string for this result.
+.TP
+.B d
+The remote path for this result, if available.
+.TP
+.B r
+The remote repository where this package can be retrieved.
+.TP
+.B l
+The full URL to download this exact package.
+.TP
+.B s
+The installation/availability status of this package (see \fBPACKAGE STATUS\fR, above).
+.TP
+.B a
+Builds the replacement string by applying a sub-format string to each available exact package version.
+Must be followed by two strings deliminated by \fB{\fR and \fB}\fR.
+The first is used join the result string of each sub-result into the final result string for the entire \fB%a\fR sequence.
+The second is the sub-format string to apply to each sub-result.
+.TP
+.B i
+Acts as \fB%a\fR, but iterates over each installed version of this package to build the resulting replacement string.
+.P
+Note that \fB%p\fR, \fB%v\fR, \fB%m\fR, \fB%b\fR, \fB%d\fR, \fB%r\fR, and \fB%l\fR only apply in \fB\-\-by\-version\fR mode,
+or within a \fB%a\fR or \fB%i\fR construct.
+Further, \fB%a\fR and \fB%i\fR cannot be used recursively.
+.P
+Also, \fB%s\fR (installation/availability status) may display a different status for an overall package vs. a particular package version (see \fBPACKAGE STATUS\fR, above).
 .SH EXIT STATUS
 The exit status is \fB0\fR if the package lists were searched successfully, even if no matching packages were found.
 Other possible exit statuses are:
@@ -93,7 +223,7 @@ Also, if using the same working directory as
 .BR slackpkg (8),
 using these tools at the same time could result in unintended behavior.
 .SH EXAMPLES
-To find all currently available or installed kernel packages:
+To find all currently available or installed kernel packages, displayed with default \fB\-\-by\-package\fR formatting:
 .PP
 .nf
 .RS 5
@@ -101,11 +231,11 @@ To find all currently available or installed kernel packages:
 .RE
 .fi
 .PP
-To find only kernel\-generic packages available upstream in the testing sub-repository, and include the download link:
+To find only kernel\-generic packages available upstream in the testing sub-repository, and just show the download link for those package:
 .PP
 .nf
 .RS 5
-.B findpkg \-\-repo testing \-\-status available --link kernel\-generic
+.B findpkg \-\-by\-version \-\-repo testing \-\-available --link kernel\-generic
 .RE
 .fi
 .PP
@@ -113,7 +243,7 @@ To get more detailed information about the currently installed slackpkg package:
 .PP
 .nf
 .RS 5
-.B findpkg \-\-status installed \-\-info slackpkg
+.B findpkg \-\-installed \-\-info slackpkg
 .RE
 .fi
 .SH AUTHORS

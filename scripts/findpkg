@@ -128,7 +128,8 @@ while ($_=shift @ARGV) {
 my $CONFIG={};
 my $PKGTOOLS_EXTRAS_CONF=$ENV{PKGTOOLS_EXTRAS_CONF} || "/etc/pkgtools-extras.conf";
 if(!-e $PKGTOOLS_EXTRAS_CONF || !-r $PKGTOOLS_EXTRAS_CONF) {
-    die "ERROR: Unable to find or read config file [$PKGTOOLS_EXTRAS_CONF]\n";
+    print STDERR "ERROR: Unable to find or read config file [$PKGTOOLS_EXTRAS_CONF]\n";
+    exit(78);
 }
 
 open my $cfgfh, "<$PKGTOOLS_EXTRAS_CONF";
@@ -159,6 +160,16 @@ while(<$cfgfh>) {
 
 }
 close($cfgfh);
+
+if(!$CONFIG->{WORKDIR} || !$CONFIG->{PKGTOOLS_INSTALLED_PKGS_DIR} || !-e $CONFIG->{PKGTOOLS_INSTALLED_PKGS_DIR}) {
+    print STDERR "ERROR: WORKDIR and PKGTOOLS_INSTALLED_PKGS_DIR need to be set in the $PKGTOOLS_EXTRAS_CONF file.\n";
+    exit(78);
+}
+
+if(!-e "$CONFIG->{WORKDIR}/pkglist" || !-e "$CONFIG->{WORKDIR}/PACKAGES.TXT") {
+    print STDERR "ERROR: No pkglist (or PACKAGES.TXT) found in $CONFIG->{WORKDIR}.  Please update the pkglist.\n";
+    exit(72);
+}
 
 my $all_repos = join(' ',keys %{$CONFIG->{MIRRORS}});
 $REPOLIST = "__available__" if $REPOLIST eq "";
