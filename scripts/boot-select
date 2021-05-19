@@ -288,6 +288,8 @@ while read -r tag vers image package initrd initrd_status tool dflt label ; do
 	# Show tags, labels, initrd status, default status, and current kernel package used.
 	if [ "$dflt" = "__default__" ]; then
 	    simple_default=",default"
+	else
+	    simple_default=
 	fi
 	simple_initrd_status=${initrd_status//__/}
 	simple_initrd_status=${simple_initrd_status//_/-}
