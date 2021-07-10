@@ -113,6 +113,7 @@ function parse_lilo_config {
         -e '/^image|label|initrd|default|other[[:space:]]=/ p' ${1} \
 	|awk -e "BEGINFILE {\
                      is_default=\"__non_default__\"; \
+		     initrd=\"__none__\"; \
 	       	 } \
 		 { \
 		     split(\$0,wrk,/[[:space:]]*=[[:space:]]*/); \
@@ -149,7 +150,7 @@ function parse_lilo_config {
 }
 
 CONFIGS=$( parse_lilo_config $LILO_CONF __lilo__; parse_lilo_config $ELILO_CONF __elilo__ )
-
+#echo "${CONFIGS}"
 BOOT_CONFIGS=$(while read -r tool dflt image initrd label ; do
 
     if [ "${image:0:1}" != "/" ]; then
