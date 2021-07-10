@@ -150,7 +150,7 @@ for x in $PKGNAMES; do
 		    # md5sum .... (get the checksum from the CHECKSUMS.md5 file for this package)
 		    (
 			cd ${TMPDIR}
-			tail +13 ${WORKDIR}/CHECKSUMS.md5 | grep -e " ${LOCAL_PATH}/${PKGNAME}" |md5sum -c -
+			tail +13 ${WORKDIR}/CHECKSUMS.md5 | grep -e " ${LOCAL_PATH}/${PKGNAME}$" -e " ${LOCAL_PATH}/${PKGNAME}.asc$" |md5sum -c -
 		    ) || abort_clean 1 "md5sum for package $x incorrect."   
 		    gpg --verify ${TMPDIR}/${LOCAL_PATH}/${PKGNAME}.asc ${TMPDIR}/${LOCAL_PATH}/${PKGNAME} 2> /dev/null || abort_clean 1 "gpg signature for package $x incorrect."
 		fi
