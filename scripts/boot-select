@@ -48,13 +48,19 @@ set -e
 # --set TAG=SIZE-VERSION    For the config of TAG (if configured, or complain), copy in the SIZE-VERSION kernel (if installed, or complain) to the appropriate place, and initrd too, created if needed.
 # --clear TAG               For the config of TAG (if configured, or complain), remove the current kernel.  This will cause that TAG to no longer validly boot.
 # Can specify several --set and/or --clear options in a single invocation.
+# --force causes set/clear to re-do work even if they wouldn't actually change settings.
 
 SHOW_LIST=
 SHOW_UNUSED=
 SKIP_LILO=
+FORCE_REDO=
 CHANGES=
 DRY_RUN=
 SKIP_INITRD=
+USE_COLOR=
+if [ -t 1 ]; then
+    USE_COLOR=1
+fi
 
 while [ -n "$1" ]; do
     case $1 in
@@ -92,6 +98,14 @@ while [ -n "$1" ]; do
 	    DRY_RUN=1
 	    shift
 	    ;;
+        --no-color|-n)
+            USE_COLOR=
+            shift
+            ;;
+        --force|-f)
+            FORCE_REDO=1
+            shift
+            ;;
 	*)
 	    abort_clean 64 "Unknown parameter $1"
 	    ;;
@@ -101,6 +115,53 @@ done
 if [ -z "$CHANGES" -a -z "$SHOW_LIST" -a -z "$SHOW_UNUSED" ]; then
     SHOW_LIST=1
 fi
+
+# Set up all the colors
+if [ -n "$USE_COLOR" ]; then
+    # 0 resets all
+    # combine with ;
+    # bold is 1
+    # dim is 2
+    # underline is 4
+    # blink is 5
+    # reverse is 7
+    # hidden is 8
+    # colors are 30-37 and 90-97 for text foreground (39 is default)
+    # 40-47 and 100-107 for background (49 is default)
+    # 30 black
+    # 31 red
+    # 32 green
+    # 33 yellow
+    # 34 blue
+    # 35 magenta
+    # 36 cyan
+    # 37 light gray
+    # 90 dark grey
+    # 91 light red
+    # 92 light green
+    # 93 light yellow
+    # 94 light blue
+    # 95 light magenta
+    # 96 light cyan
+    # 97 white
+    CNORM="\e[0m"
+    CDEFAULT="\e[1m"
+    CRUNNING="\e[1;4;34m"
+    CTAG_OK="\e[1m"
+    CTAG_BAD="\e[31m"
+    CPKG_OK="\e[32m"
+    CPKG_BAD="\e[31m"
+    CIMG_OK=
+    CIMG_BAD="\e[31m"
+    CINITRD_OK=
+    CINITRD_BAD="\e[31m"
+    CIS_OK=
+    CIS_MISSING="\e[31m"
+    CIS_CHANGED="\e[33m"
+    CVERSION_UNKNOWN="\e[31m"
+    CVERSION_OK=
+fi
+
 
 # Read in the current lilo/elilo configuration
 function parse_lilo_config {
@@ -268,7 +329,7 @@ BOOT_CONFIGS=$(while read -r tool dflt image initrd label ; do
 #    echo "$tool $real_tag $dflt $image $initrd $found_initrd $vers $found_pkg $label"
     echo "$real_tag $vers $image $found_pkg $initrd $found_initrd $tool $dflt $label"
     
-done <<< "$CONFIGS")
+done <<< "$CONFIGS" | sort)
 
 
 
@@ -281,26 +342,66 @@ fi
 declare -A BC_IMAGE
 declare -A BC_INITRD
 declare -A BC_TOOL
+declare -A BC_PACKAGE
 BC_USED_PKGS=
 BC_USED_PKG_VERS=
 BC_USED_VERS=
+RUN_VER=$(uname -r)
 while read -r tag vers image package initrd initrd_status tool dflt label ; do
     if [ -n "$SHOW_LIST" -a "$tag" != "__invalid_tag__" ] || [ "$SHOW_LIST" = "2" ] ; then
 	# Show tags, labels, initrd status, default status, and current kernel package used.
+        if [ "$tag" = "__invalid_tag__" ]; then
+            CTAG=$CTAG_BAD
+        else
+            CTAG=$CTAG_OK
+        fi
+        if [ "$package" = "__notfound__" ]; then
+            CPKG=$CPKG_BAD
+        else
+            CPKG=$CPKG_OK
+        fi
 	if [ "$dflt" = "__default__" ]; then
-	    simple_default=",default"
+	    simple_default=",${CDEFAULT}default${CNORM}"
 	else
 	    simple_default=
 	fi
 	simple_initrd_status=${initrd_status//__/}
 	simple_initrd_status=${simple_initrd_status//_/-}
+        if [ "$initrd_status" = "__initrd_missing__" ]; then
+            CIS=$CIS_MISSING
+        elif [ "$initrd_status" = "__initrd_changed__" ]; then
+            CIS=$CIS_CHANGED
+        else
+            CIS=$CIS_OK
+        fi
+        if [ "$vers" = "$RUN_VER" ]; then
+            simple_running=",${CRUNNING}running${CNORM}"
+        else
+            simple_running=
+        fi
+        if [ "$vers" = "__unknown_version__" ]; then
+            CVERSION=$CVERSION_UNKNOWN
+        else
+            CVERSION=$CVERSION_OK
+        fi
 	label=${label##\"}
 	label=${label%%\"}
-	echo "  $tag=$package \"$label\" ($simple_initrd_status$simple_default,$vers)"
-	echo "    image=$image"
+	echo -e "  ${CTAG}$tag${CNORM}=${CPKG}$package${CNORM} \"$label\" (${CIS}$simple_initrd_status${CNORM}$simple_default$simple_running,${CVERSION}$vers${CNORM})"
+        if [ -r $image ]; then
+            CIMG=$CIMG_OK
+        else
+            CIMG=$CIMG_BAD
+        fi
+	echo -e "    image=${CIMG}$image${CNORM}"
 	if [ "$initrd" != "__none__" ]; then
-	    echo "    initrd=$initrd"
+            if [ -r $initrd ]; then
+                CINITRD=$CINITRD_OK
+            else
+                CINITRD=$CINITRD_BAD
+            fi
+	    echo -e "    initrd=${CINITRD}$initrd${CNORM}"
 	fi
+        echo
     fi
     if [ "$tag" != "__invalid_tag__" ]; then
 	if [ -n "${BC_IMAGE[$tag]}" ]; then
@@ -309,6 +410,11 @@ while read -r tag vers image package initrd initrd_status tool dflt label ; do
 	BC_IMAGE[$tag]=$image
 	BC_INITRD[$tag]=$initrd
 	BC_TOOL[$tag]=$tool
+        if [ "$package" = "__notfound__" ]; then
+            BC_PACKAGE[$tag]=
+        else
+            BC_PACKAGE[$tag]=$package
+        fi
     fi
     if [ "$package" != "__notfound__" ]; then
 	BC_USED_PKGS="${BC_USED_PKGS}${package}"$'\n'
@@ -381,30 +487,35 @@ if [ -n "$CHANGES" ]; then
 	    warn_msg "Tag [$tag] not found as valid tag in lilo.conf or elilo.conf"
 	    CHANGES_VALIDATED=
 	else
-	    if [ "${BC_TOOL[$tag]}" = "__lilo__" ]; then
-		RERUN_LILO=1
-	    fi
-	    if [ -n "$target" ]; then
-		size=${target##kernel-}
-		size=${size%%-*}
-		vers=${target##kernel-${size}-}
-		vers=${vers%%-*}
-		excess=${target##kernel-${size}-${vers}-}
-		if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
-		    warn_msg "Target for tag $tag: [$target] (${size}-${vers}) is not a currently installed kernel package."
-		    CHANGES_VALIDATED=
-		elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
-		    warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
-		    CHANGES_VALIDATED=
-		elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
-		    warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
-		    CHANGES_VALIDATED=
-		else		
+            if [ -z "$FORCE_REDO" -a "${BC_PACKAGES[$tag]}" = "$target" ]; then
+                # Nothing to do for this one, since we aren't being forced.  Validates OK.
+                :
+            else
+	        if [ "${BC_TOOL[$tag]}" = "__lilo__" ]; then
+		    RERUN_LILO=1
+	        fi
+	        if [ -n "$target" ]; then
+		    size=${target##kernel-}
+		    size=${size%%-*}
+		    vers=${target##kernel-${size}-}
+		    vers=${vers%%-*}
+		    excess=${target##kernel-${size}-${vers}-}
+		    if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
+		        warn_msg "Target for tag $tag: [$target] (${size}-${vers}) is not a currently installed kernel package."
+		        CHANGES_VALIDATED=
+		    elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
+		        warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
+		        CHANGES_VALIDATED=
+		    elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
+		        warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
+		        CHANGES_VALIDATED=
+		    else		
+		        :
+		    fi
+	        else
 		    :
-		fi
-	    else
-		:
-	    fi
+	        fi
+            fi
 	fi
     done
 
@@ -414,69 +525,73 @@ if [ -n "$CHANGES" ]; then
 	    VALS=( ${x//=/ } )
 	    tag=${VALS[0]}
 	    target=${VALS[1]}
-	    if [ -z "$target" ]; then
-		echo "  Removing kernel image ${BC_IMAGE[$tag]} ..."
-		if [ -z "$DRY_RUN" ]; then
-		    rm -f ${BC_IMAGE[$tag]}
-		else
-		    echo "    # rm -f ${BC_IMAGE[$tag]}"
-		fi
-		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		    if [ -z "$SKIP_INITRD" ]; then
-			echo "  Removing initrd image ${BC_INITRD[$tag]} ..."
-			if [ -z "$DRY_RUN" ]; then
-			    rm -f ${BC_INITRD[$tag]}
-			else
-			    echo "    # rm -f ${BC_INITRD[$tag]}"
-			fi
+            if [ -z "$FORCE_REDO" -a "$target" = "${BC_PACKAGE[$tag]}" ]; then
+                echo "  Requested setting already in place.  Doing nothing."
+            else
+	        if [ -z "$target" ]; then
+		    echo "  Removing kernel image ${BC_IMAGE[$tag]} ..."
+		    if [ -z "$DRY_RUN" ]; then
+		        rm -f ${BC_IMAGE[$tag]}
 		    else
-			echo "  Skipping removal of initrd image ${BC_INITRD[$tag]}."
+		        echo "    # rm -f ${BC_IMAGE[$tag]}"
 		    fi
-		fi
-		warn_msg "Kernel tagged [$tag] was removed!  If this is a default boot config, please set it to something before rebooting!"
-	    else
-		size=${target##kernel-}
-		size=${size%%-*}
-		vers=${target##kernel-${size}-}
-		vers=${vers%%-*}
-		excess=${target##kernel-${size}-${vers}-}
+		    if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		        if [ -z "$SKIP_INITRD" ]; then
+			    echo "  Removing initrd image ${BC_INITRD[$tag]} ..."
+			    if [ -z "$DRY_RUN" ]; then
+			        rm -f ${BC_INITRD[$tag]}
+			    else
+			        echo "    # rm -f ${BC_INITRD[$tag]}"
+			    fi
+		        else
+			    echo "  Skipping removal of initrd image ${BC_INITRD[$tag]}."
+		        fi
+		    fi
+		    warn_msg "Kernel tagged [$tag] was removed!  If this is a default boot config, please set it to something before rebooting!"
+	        else
+		    size=${target##kernel-}
+		    size=${size%%-*}
+		    vers=${target##kernel-${size}-}
+		    vers=${vers%%-*}
+		    excess=${target##kernel-${size}-${vers}-}
 
-		tgt_image=/boot/vmlinuz-${size}-${vers}
-		tgt_initrd=/boot/initrd-${size}-${vers}.gz
+		    tgt_image=/boot/vmlinuz-${size}-${vers}
+		    tgt_initrd=/boot/initrd-${size}-${vers}.gz
 
-		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		    if [ -z "$SKIP_INITRD" ]; then
-			echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
-			if [ -z "$DRY_RUN" ];then
-			    mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
-			else
-			    echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
-			fi
+		    if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		        if [ -z "$SKIP_INITRD" ]; then
+			    echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
+			    if [ -z "$DRY_RUN" ];then
+			        mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
+			    else
+			        echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
+			    fi
+		        else
+			    warn_msg "Skipping creation of new initrd [$tgt_initrd] for kernel ${vers}!  You almost certainly will need to do this manually!"
+		        fi
+		    fi
+
+		    echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
+		    if [ -z "$DRY_RUN" ]; then
+		        cp -a $tgt_image ${BC_IMAGE[$tag]}
 		    else
-			warn_msg "Skipping creation of new initrd [$tgt_initrd] for kernel ${vers}!  You almost certainly will need to do this manually!"
+		        echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
 		    fi
-		fi
 
-		echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
-		if [ -z "$DRY_RUN" ]; then
-		    cp -a $tgt_image ${BC_IMAGE[$tag]}
-		else
-		    echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
-		fi
-
-		if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		    if [ -z "$SKIP_INITRD" ]; then
-			echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
-			if [ -z "$DRY_RUN" ]; then
-			    cp -a $tgt_initrd ${BC_INITRD[$tag]}
-			else
-			    echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
-			fi
-		    else
-			warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
+		    if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		        if [ -z "$SKIP_INITRD" ]; then
+			    echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
+			    if [ -z "$DRY_RUN" ]; then
+			        cp -a $tgt_initrd ${BC_INITRD[$tag]}
+			    else
+			        echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+			    fi
+		        else
+			    warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
+		        fi
 		    fi
-		fi
-	    fi
+	        fi
+            fi
 	    echo
 	done
 
