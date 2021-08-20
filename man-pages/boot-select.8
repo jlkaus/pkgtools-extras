@@ -1,4 +1,4 @@
-.TH BOOT\-SELECT 8 "2021-05-18" "pkgtools-extras 1.0.0"
+.TH BOOT\-SELECT 8 "2021-08-20" "pkgtools-extras 1.1.0"
 .SH NAME
 boot\-select \- Simplify selection of an appropriate boot kernel for \fBlilo\fR and \fBelilo\fR systems.
 .SH SYNOPSIS
@@ -7,6 +7,7 @@ boot\-select \- Simplify selection of an appropriate boot kernel for \fBlilo\fR 
 [\fB\-u\fR, \fB\-\-unused\fR]
 [\fB\-\-skip\-lilo\fR]
 [\fB\-\-skip\-initrd\fR]
+[\fB\-f\fR, \fB\-\-force\fR]
 [\fB\-d\fR, \fB\-\-dry\-run\fR]
 [\fB\-s\fR, \fB\-\-set\fR \fITAG\fB=\fR[\fIKERNELPKG\fR]] ...
 [\fB\-c\fR, \fB\-\-clear\fR \fITAG\fR] ...
@@ -60,6 +61,12 @@ and
 to use the newly specified kernel version.
 Specifying \fB\-\-skip\-initrd\fR prevents that from happening.
 It will then be the responsibility of the user to ensure that the initrd image is properly rebuilt to include modules for the new kernel version, etc.
+.TP
+.BR \-f ", " \-\-force
+Normally, a \fB\-\-set\fR or \fB\-\-clear\fR that results in no actual changes
+(the specified tag was already pointing to the desired package, for example)
+will be recognized and skipped.  Specifying \fB\-\-force\fR instead causes the changes to be re-done:
+the package is re-copied into place (for \fB\-\-set\fR), the initrd is re-built (if needed), and lilo to be re-run (if used).
 .TP
 .BR \-d ", " \-\-dry\-run
 Makes no changes to the system, but reports the changes that would be made.
