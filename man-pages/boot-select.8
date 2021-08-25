@@ -9,6 +9,7 @@ boot\-select \- Simplify selection of an appropriate boot kernel for \fBlilo\fR 
 [\fB\-\-skip\-initrd\fR]
 [\fB\-f\fR, \fB\-\-force\fR]
 [\fB\-d\fR, \fB\-\-dry\-run\fR]
+[\fB\-n\fR, \fB\-\-no\-color\fR]
 [\fB\-s\fR, \fB\-\-set\fR \fITAG\fB=\fR[\fIKERNELPKG\fR]] ...
 [\fB\-c\fR, \fB\-\-clear\fR \fITAG\fR] ...
 .SH DESCRIPTION
@@ -70,6 +71,11 @@ the package is re-copied into place (for \fB\-\-set\fR), the initrd is re-built 
 .TP
 .BR \-d ", " \-\-dry\-run
 Makes no changes to the system, but reports the changes that would be made.
+.TP
+.BR \-n ", " \-\-no\-color
+Normally, if the output is a TTY, the \fB\-\-list\fR and \fB\-\-list\-all\fR output is colorized to highlight problems and defaults, etc.
+If the output is not a TTY, it is not colorized.
+This option overrides automatic colorization and disables color even if the output is a TTY.
 .TP
 .BR \-s ", " \-\-set " " \fITAG\fR=[\fIKERNELPKG\fR]
 Requests to change the boot configuration associated with \fITAG\fR to use the kernel from \fIKERNELPKG\fR,
