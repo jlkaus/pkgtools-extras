@@ -9,6 +9,7 @@ boot\-select \- Simplify selection of an appropriate boot kernel for \fBlilo\fR 
 [\fB\-\-skip\-initrd\fR]
 [\fB\-f\fR, \fB\-\-force\fR]
 [\fB\-d\fR, \fB\-\-dry\-run\fR]
+[\fB\-\-no\-regen\-initrd\fR]
 [\fB\-n\fR, \fB\-\-no\-color\fR]
 [\fB\-s\fR, \fB\-\-set\fR \fITAG\fB=\fR[\fIKERNELPKG\fR]] ...
 [\fB\-c\fR, \fB\-\-clear\fR \fITAG\fR] ...
@@ -72,6 +73,11 @@ the package is re-copied into place (for \fB\-\-set\fR), the initrd is re-built 
 .BR \-d ", " \-\-dry\-run
 Makes no changes to the system, but reports the changes that would be made.
 .TP
+.BR \-\-no\-regen\-initrd
+By default, if setting a tag to a generic kernel package, the initrd for that kernel version is rebuilt, even if it already exists.
+Setting this option just uses the one that was already built for that kernel version, if it exists.
+If it does not exist yet, it is still re-built.
+.TP
 .BR \-n ", " \-\-no\-color
 Normally, if the output is a TTY, the \fB\-\-list\fR and \fB\-\-list\-all\fR output is colorized to highlight problems and defaults, etc.
 If the output is not a TTY, it is not colorized.
@@ -81,6 +87,7 @@ This option overrides automatic colorization and disables color even if the outp
 Requests to change the boot configuration associated with \fITAG\fR to use the kernel from \fIKERNELPKG\fR,
 which must be a fully specified, currently installed, valid kernel package (a specific version of \fBkernel\-huge\fR or \fBkernel\-generic\fR).
 If \fIKERNELPKG\fR is not specified, acts as \fB\-\-clear\fR \fITAG\fR (see below).
+If the \fIKERNELPKG\fR value starts with a \fB:\fR, it is instead treated as a reference to a different \fITAG\fR, whose kernel and initrd are copied over into place for the specified \fITAG\fR, as well.
 .TP
 .BR \-c ", " \-\-clear " " \fITAG\fR
 Requests to remove the current kernel for the boot configuration associated with \fITAG\fR.

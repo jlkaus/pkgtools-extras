@@ -58,6 +58,7 @@ CHANGES=
 DRY_RUN=
 SKIP_INITRD=
 USE_COLOR=
+NO_REGEN_INITRD=
 if [ -t 1 ]; then
     USE_COLOR=1
 fi
@@ -84,6 +85,10 @@ while [ -n "$1" ]; do
 	    SKIP_INITRD=1
 	    shift
 	    ;;
+        --no-regen-initrd)
+            NO_REGEN_INITRD=1
+            shift
+            ;;
 	--clear|-c)
 	    shift
 	    CHANGES="$CHANGES $1="
@@ -487,7 +492,7 @@ if [ -n "$CHANGES" ]; then
 	    warn_msg "Tag [$tag] not found as valid tag in lilo.conf or elilo.conf"
 	    CHANGES_VALIDATED=
 	else
-            if [ -z "$FORCE_REDO" -a "${BC_PACKAGES[$tag]}" = "$target" ]; then
+            if [ -z "$FORCE_REDO" -a "${BC_PACKAGE[$tag]}" = "$target" ]; then
                 # Nothing to do for this one, since we aren't being forced.  Validates OK.
                 :
             else
@@ -495,23 +500,53 @@ if [ -n "$CHANGES" ]; then
 		    RERUN_LILO=1
 	        fi
 	        if [ -n "$target" ]; then
-		    size=${target##kernel-}
-		    size=${size%%-*}
-		    vers=${target##kernel-${size}-}
-		    vers=${vers%%-*}
-		    excess=${target##kernel-${size}-${vers}-}
-		    if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
-		        warn_msg "Target for tag $tag: [$target] (${size}-${vers}) is not a currently installed kernel package."
-		        CHANGES_VALIDATED=
-		    elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
-		        warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
-		        CHANGES_VALIDATED=
-		    elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
-		        warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
-		        CHANGES_VALIDATED=
-		    else		
-		        :
-		    fi
+                    if [ "${target:0:1}" = ":" ]; then
+                        # psuedo-target: promote one tag to the value of another
+                        # just validate that the target tag exists, and its files exist?
+                        ptarget=${target:1}
+                        if [ -z "${BC_TOOL[$ptarget]}" ]; then
+                            warn_msg "Target tag [$ptarget] not found as a valid tag in lilo.conf or elilo.conf"
+                            CHANGES_VALIDATED=
+                        else
+                            utarget=${BC_PACKAGE[$ptarget]}
+                            size=${utarget##kernel-}
+                            size=${size%%-*}
+                            vers=${utarget##kernel-${size}-}
+                            vers=${vers%%-*}
+                            excess=${utarget##kernel-${size}-${vers}-}
+		            if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
+		                warn_msg "Target for tag $tag: [$utarget] (${size}-${vers}) is not a currently installed kernel package."
+		                CHANGES_VALIDATED=
+		            elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
+		                warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
+		                CHANGES_VALIDATED=
+		            elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
+		                warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
+		                CHANGES_VALIDATED=
+		            else		
+		                :
+		            fi
+                        fi
+                    else
+                        # Must be a normal target
+		        size=${target##kernel-}
+		        size=${size%%-*}
+		        vers=${target##kernel-${size}-}
+		        vers=${vers%%-*}
+		        excess=${target##kernel-${size}-${vers}-}
+		        if [ ! -e $PKG_LIST_LOC/kernel-${size}-${vers}-${excess} ]; then
+		            warn_msg "Target for tag $tag: [$target] (${size}-${vers}) is not a currently installed kernel package."
+		            CHANGES_VALIDATED=
+		        elif [ "${size}" = "generic" -a "${BC_INITRD[$tag]}" = "__none__" ]; then
+		            warn_msg "Target for tag $tag is a generic kernel, but no initrd image path is specified in the configuration."
+		            CHANGES_VALIDATED=
+		        elif [ ! -e /boot/vmlinuz-${size}-${vers} ]; then
+		            warn_msg "Target for tag $tag is missing the kernel image file at [/boot/vmlinuz-${size}-${vers}]."
+		            CHANGES_VALIDATED=
+		        else		
+		            :
+		        fi
+                    fi
 	        else
 		    :
 	        fi
@@ -549,48 +584,93 @@ if [ -n "$CHANGES" ]; then
 		    fi
 		    warn_msg "Kernel tagged [$tag] was removed!  If this is a default boot config, please set it to something before rebooting!"
 	        else
-		    size=${target##kernel-}
-		    size=${size%%-*}
-		    vers=${target##kernel-${size}-}
-		    vers=${vers%%-*}
-		    excess=${target##kernel-${size}-${vers}-}
+                    if [ "${target:0:1}" = ":" ]; then
+                        # psuedo-target: promote one tag to the value of another
+                        # just validate that the target tag exists, and its files exist?
+                        ptarget=${target:1}
+                        if [ -z "${BC_TOOL[$ptarget]}" ]; then
+                            warn_msg "Target tag [$ptarget] not found as a valid tag in lilo.conf or elilo.conf"
+                            CHANGES_VALIDATED=
+                        else
+                            utarget=${BC_PACKAGE[$ptarget]}
+                            size=${utarget##kernel-}
+                            size=${size%%-*}
+                            vers=${utarget##kernel-${size}-}
+                            vers=${vers%%-*}
+                            excess=${utarget##kernel-${size}-${vers}-}
 
-		    tgt_image=/boot/vmlinuz-${size}-${vers}
-		    tgt_initrd=/boot/initrd-${size}-${vers}.gz
+		            tgt_image=/boot/vmlinuz-${size}-${vers}
+		            tgt_initrd=/boot/initrd-${size}-${vers}.gz
 
-		    if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		        if [ -z "$SKIP_INITRD" ]; then
-			    echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
-			    if [ -z "$DRY_RUN" ];then
-			        mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
-			    else
-			        echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
-			    fi
-		        else
-			    warn_msg "Skipping creation of new initrd [$tgt_initrd] for kernel ${vers}!  You almost certainly will need to do this manually!"
+		            echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
+		            if [ -z "$DRY_RUN" ]; then
+		                cp -a $tgt_image ${BC_IMAGE[$tag]}
+		            else
+		                echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
+		            fi
+
+		            if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		                if [ -z "$SKIP_INITRD" ]; then
+			            echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
+			            if [ -z "$DRY_RUN" ]; then
+			                cp -a $tgt_initrd ${BC_INITRD[$tag]}
+			            else
+			                echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+			            fi
+		                else
+			            warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
+		                fi
+		            fi
+                            
+                        fi
+                    else
+                        size=${target##kernel-}
+		        size=${size%%-*}
+		        vers=${target##kernel-${size}-}
+		        vers=${vers%%-*}
+		        excess=${target##kernel-${size}-${vers}-}
+
+		        tgt_image=/boot/vmlinuz-${size}-${vers}
+		        tgt_initrd=/boot/initrd-${size}-${vers}.gz
+
+		        if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		            if [ -z "$SKIP_INITRD" ]; then
+                                if [ -z "$NO_REGEN_INITRD" -o ! -e ${tgt_initrd} ]; then
+			            echo "  Building new initrd [$tgt_initrd] for kernel ${vers} ..."
+			            if [ -z "$DRY_RUN" ];then
+			                mkinitrd -F -c -k ${vers} -o ${tgt_initrd}
+			            else
+			                echo "    # mkinitrd -F -c -k ${vers} -o ${tgt_initrd}"
+			            fi
+                                else
+                                    warn_msg "Not regenerating initrd [$tgt_initrd] for kernel ${vers} because it already exists and you specified --no-regen-initrd.  Hopefully this is what you wanted."
+                                fi
+		            else
+			        warn_msg "Skipping creation of new initrd [$tgt_initrd] for kernel ${vers}!  You almost certainly will need to do this manually!"
+		            fi
 		        fi
-		    fi
 
-		    echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
-		    if [ -z "$DRY_RUN" ]; then
-		        cp -a $tgt_image ${BC_IMAGE[$tag]}
-		    else
-		        echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
-		    fi
-
-		    if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
-		        if [ -z "$SKIP_INITRD" ]; then
-			    echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
-			    if [ -z "$DRY_RUN" ]; then
-			        cp -a $tgt_initrd ${BC_INITRD[$tag]}
-			    else
-			        echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
-			    fi
+		        echo "  Copying kernel image [$tgt_image] into place at [${BC_IMAGE[$tag]}] ..."
+		        if [ -z "$DRY_RUN" ]; then
+		            cp -a $tgt_image ${BC_IMAGE[$tag]}
 		        else
-			    warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
+		            echo "    # cp -a $tgt_image ${BC_IMAGE[$tag]}"
 		        fi
-		    fi
-	        fi
+
+		        if [ "${BC_INITRD[$tag]}" != "__none__" ]; then
+		            if [ -z "$SKIP_INITRD" ]; then
+			        echo "  Copying initrd image [$tgt_initrd] into place at [${BC_INITRD[$tag]}] ..."
+			        if [ -z "$DRY_RUN" ]; then
+			            cp -a $tgt_initrd ${BC_INITRD[$tag]}
+			        else
+			            echo "    # cp -a $tgt_initrd ${BC_INITRD[$tag]}"
+			        fi
+		            else
+			        warn_msg "Skipping copying of new initrd [$tgt_initrd] into place at [${BC_INITRD[$tag]}]!  You almost certainly will need to do this manually!"
+		            fi
+		        fi
+	            fi
+                fi
             fi
 	    echo
 	done
