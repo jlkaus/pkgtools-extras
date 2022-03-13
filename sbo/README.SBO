@@ -2,8 +2,7 @@ Additional pkgtool-like tools for Slackware Linux.
 
 Tools to make finding and retrieving Slackware packages from remote
 repositories easier, as well as some to help with installing
-parallel boot kernels, and selecting which ones lilo or elilo will
-use.
+parallel boot kernels.
 
 While tools are included to operate independently, can also use
 meta-data files from slackpkg and slackpkg+.
@@ -37,16 +36,8 @@ Tools to help with kernel package maintenance:
 	package-version was simply rebuilt.  Supports any package, but
 	really only kernel packages are likely to behave in any useful
 	manner.
-  * boot-select
-	Tool to analyze lilo and elilo configs and allow changing the
-	kernel version associated with a particular boot config.
-	Handles rebuilding associated initrd images using mkinitrd and
-	mkinitrd.conf.
-	Also makes it easy to determine which installed kernel packages
-	are no longer useful and could be removed.
 
 Note that while other kernel-helper scripts were considered, most devolved
-into simple pipelines along the lines of
-`findpkg | fetchpkg --exec installkernelpkg` or
-`boot-select --unused | removepkg` that are fairly easy to develop and
-understand.
+into simple pipelines along the lines of:
+`findpkg | fetchpkg --exec installkernelpkg`
+

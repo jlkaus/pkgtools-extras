@@ -1,8 +1,7 @@
 # pkgtools-extras
 Additional pkgtool-like tools for Slackware Linux to enable scriptable
-package searching in remote repositories, easy package fetching from
-remote repositories, and some basic lilo/elilo kernel selection/package
-management that fits my needs.
+package searching in remote repositories, and easy package fetching from
+remote repositories.
 
 Can use slackpkg/slackpkg+ metadata if available, or provides its
 own metadata update program as well.
@@ -16,6 +15,6 @@ patches, etc., its probably easier to continue using those tools, but its
 difficult to use pieces of those programs to find and/or fetch packages
 programmatically, let alone do some of the kernel package management I prefer
 (such as keeping around several older kernel versions, side-by-side, but
-still allow using tools to retrieve and isntall the newer kernel versions
+still allow using tools to retrieve and install the newer kernel versions
 for evaluation).
 

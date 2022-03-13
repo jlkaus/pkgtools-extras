@@ -58,9 +58,9 @@ clean:
 
 install: pkgtools-extras installdirs
 	install -t $(DESTDIR)$(sysconfdir) -o root -g root -m 0644 config/pkgtools-extras.conf.new
-	install -t $(DESTDIR)$(sbindir) -o root -g root -m 0755 scripts/{fetchpkg,findpkg,updatepkglists,installkernelpkg,boot-select}
+	install -t $(DESTDIR)$(sbindir) -o root -g root -m 0755 scripts/{fetchpkg,findpkg,updatepkglists,installkernelpkg}
 	install -t $(DESTDIR)$(man5dir) -o root -g root -m 0644 man-pages/pkgtools-extras.conf.5
-	install -t $(DESTDIR)$(man8dir) -o root -g root -m 0644 man-pages/{fetchpkg,findpkg,updatepkglists,installkernelpkg,boot-select}.8
+	install -t $(DESTDIR)$(man8dir) -o root -g root -m 0644 man-pages/{fetchpkg,findpkg,updatepkglists,installkernelpkg}.8
 
 installdirs:
 	install -d -o root -g root -m 0755 $(DESTDIR)$(sbindir) $(DESTDIR)$(man5dir) $(DESTDIR)$(man8dir) $(DESTDIR)$(sysconfdir)
